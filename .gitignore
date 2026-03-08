@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+uploads/*
+!uploads/.gitkeep
+drizzle/meta
+*.tsbuildinfo
+frontend/node_modules
+frontend/dist
