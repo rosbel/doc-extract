@@ -39,6 +39,7 @@
     "@types/node": "^22.10.0",
     "@types/pdf-parse": "^1.1.4",
     "drizzle-kit": "^0.30.0",
+    "playwright": "^1.58.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"

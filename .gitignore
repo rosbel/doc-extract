@@ -7,3 +7,9 @@ drizzle/meta
 *.tsbuildinfo
 frontend/node_modules
 frontend/dist
+
+# IDE
+.idea/
+
+# Tooling
+test-screenshots.mjs
