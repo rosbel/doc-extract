@@ -57,6 +57,20 @@ export interface DocumentDetail extends Document {
 	}>;
 }
 
+export interface SchemaRecommendation {
+	name: string;
+	description: string;
+	jsonSchema: Record<string, unknown>;
+	classificationHints: string[];
+	reasoning: string;
+	matchingDocuments: string[];
+}
+
+export interface RecommendationResponse {
+	recommendations: SchemaRecommendation[];
+	analysis: string;
+}
+
 export const api = {
 	schemas: {
 		list: () => request<Schema[]>("/schemas"),
@@ -96,6 +110,23 @@ export const api = {
 		},
 		reprocess: (id: string) =>
 			request<Document>(`/documents/${id}/reprocess`, { method: "POST" }),
+	},
+	recommendations: {
+		analyze: async (files: File[]): Promise<RecommendationResponse> => {
+			const form = new FormData();
+			for (const f of files) {
+				form.append("files", f);
+			}
+			const res = await fetch(`${BASE}/recommendations`, {
+				method: "POST",
+				body: form,
+			});
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				throw new Error(body.error || `Analysis failed: ${res.status}`);
+			}
+			return res.json();
+		},
 	},
 	search: (query: string, mode = "keyword", limit = 10) =>
 		request<{ results: unknown[]; mode: string }>("/search", {

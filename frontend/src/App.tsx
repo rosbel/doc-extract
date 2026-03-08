@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { DocumentDetail } from "./pages/DocumentDetail";
 import { Documents } from "./pages/Documents";
+import { Recommendations } from "./pages/Recommendations";
 import { Schemas } from "./pages/Schemas";
 
-type Page = "documents" | "schemas" | "document-detail";
+type Page = "documents" | "schemas" | "recommendations" | "document-detail";
 
 export default function App() {
 	const [page, setPage] = useState<Page>("documents");
@@ -26,6 +27,12 @@ export default function App() {
 					>
 						Schemas
 					</button>
+					<button
+						onClick={() => setPage("recommendations")}
+						className={`text-sm font-medium ${page === "recommendations" ? "text-blue-600" : "text-gray-600 hover:text-gray-900"}`}
+					>
+						Recommend
+					</button>
 				</div>
 			</nav>
 
@@ -39,6 +46,7 @@ export default function App() {
 					/>
 				)}
 				{page === "schemas" && <Schemas />}
+				{page === "recommendations" && <Recommendations />}
 				{page === "document-detail" && selectedDocId && (
 					<DocumentDetail
 						documentId={selectedDocId}

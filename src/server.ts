@@ -5,6 +5,7 @@ import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { documentsRouter } from "./routes/documents.js";
+import { recommendationsRouter } from "./routes/recommendations.js";
 import { schemasRouter } from "./routes/schemas.js";
 import { searchRouter } from "./routes/search.js";
 
@@ -22,6 +23,7 @@ app.get("/health", (_req, res) => {
 // Routes
 app.use("/api/schemas", schemasRouter);
 app.use("/api/documents", documentsRouter);
+app.use("/api/recommendations", recommendationsRouter);
 app.use("/api/search", searchRouter);
 
 app.use(errorHandler);
