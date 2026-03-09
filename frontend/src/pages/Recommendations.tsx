@@ -130,6 +130,21 @@ export function Recommendations() {
 					<p className="text-sm text-blue-800">{result.analysis}</p>
 				</div>
 
+				{result.warnings && result.warnings.length > 0 && (
+					<div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+						<h3 className="text-sm font-medium text-amber-800 mb-2">
+							Some files had issues
+						</h3>
+						<ul className="space-y-1">
+							{result.warnings.map((w, i) => (
+								<li key={i} className="text-sm text-amber-700">
+									<span className="font-medium">{w.filename}:</span> {w.warning}
+								</li>
+							))}
+						</ul>
+					</div>
+				)}
+
 				{error && <p className="text-red-600 text-sm">{error}</p>}
 
 				{visibleRecs.length === 0 ? (

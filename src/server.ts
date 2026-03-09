@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { config } from "./config.js";
 import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -15,6 +16,23 @@ app.use(cors());
 app.use(express.json());
 app.use(requestLogger);
 
+// HTTP-level rate limiting
+const apiLimiter = rateLimit({
+	windowMs: 60 * 1000,
+	limit: 100,
+	standardHeaders: "draft-7",
+	legacyHeaders: false,
+	message: { error: "Too many requests, please try again later" },
+});
+const uploadLimiter = rateLimit({
+	windowMs: 60 * 1000,
+	limit: 20,
+	standardHeaders: "draft-7",
+	legacyHeaders: false,
+	message: { error: "Too many uploads, please try again later" },
+});
+app.use("/api", apiLimiter);
+
 // Health check
 app.get("/health", (_req, res) => {
 	res.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -22,8 +40,8 @@ app.get("/health", (_req, res) => {
 
 // Routes
 app.use("/api/schemas", schemasRouter);
-app.use("/api/documents", documentsRouter);
-app.use("/api/recommendations", recommendationsRouter);
+app.use("/api/documents", uploadLimiter, documentsRouter);
+app.use("/api/recommendations", uploadLimiter, recommendationsRouter);
 app.use("/api/search", searchRouter);
 
 app.use(errorHandler);

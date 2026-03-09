@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
@@ -148,6 +148,85 @@ documentsRouter.get("/:id/status", async (req, res, next) => {
 	}
 });
 
+// SSE stream for real-time status updates
+documentsRouter.get("/:id/stream", async (req, res) => {
+	const POLL_INTERVAL = 2000;
+	const MAX_DURATION = 5 * 60 * 1000; // 5 minutes max
+
+	// Verify document exists before starting stream
+	const [doc] = await db
+		.select({ id: documents.id, status: documents.status })
+		.from(documents)
+		.where(eq(documents.id, req.params.id));
+	if (!doc) {
+		res.status(404).json({ error: "Document not found" });
+		return;
+	}
+
+	res.writeHead(200, {
+		"Content-Type": "text/event-stream",
+		"Cache-Control": "no-cache",
+		Connection: "keep-alive",
+	});
+
+	const startTime = Date.now();
+	let lastStatus = "";
+
+	const sendEvent = (data: Record<string, unknown>) => {
+		res.write(`data: ${JSON.stringify(data)}\n\n`);
+	};
+
+	const poll = async () => {
+		if (Date.now() - startTime > MAX_DURATION) {
+			sendEvent({ type: "timeout", message: "Stream timed out" });
+			res.end();
+			return;
+		}
+
+		try {
+			const [current] = await db
+				.select({
+					id: documents.id,
+					status: documents.status,
+					extractionConfidence: documents.extractionConfidence,
+					errorMessage: documents.errorMessage,
+				})
+				.from(documents)
+				.where(eq(documents.id, req.params.id));
+
+			if (!current) {
+				sendEvent({ type: "error", message: "Document not found" });
+				res.end();
+				return;
+			}
+
+			// Only send when status changes
+			if (current.status !== lastStatus) {
+				lastStatus = current.status;
+				sendEvent({ type: "status", ...current });
+			}
+
+			// Terminal states end the stream
+			if (current.status === "completed" || current.status === "failed") {
+				res.end();
+				return;
+			}
+		} catch {
+			sendEvent({ type: "error", message: "Internal error" });
+			res.end();
+			return;
+		}
+
+		timer = setTimeout(poll, POLL_INTERVAL);
+	};
+
+	let timer = setTimeout(poll, 0);
+
+	req.on("close", () => {
+		clearTimeout(timer);
+	});
+});
+
 // Reprocess document
 documentsRouter.post("/:id/reprocess", async (req, res, next) => {
 	try {
@@ -170,6 +249,38 @@ documentsRouter.post("/:id/reprocess", async (req, res, next) => {
 		await enqueueClassification(doc.id);
 		logger.info("Document reprocessing enqueued", { documentId: doc.id });
 		res.json(doc);
+	} catch (err) {
+		next(err);
+	}
+});
+
+// Delete document and clean up stored file
+documentsRouter.delete("/:id", async (req, res, next) => {
+	try {
+		const doc = await db.query.documents.findFirst({
+			where: eq(documents.id, req.params.id),
+		});
+		if (!doc) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		// Delete from DB (cascade removes processing_jobs)
+		await db.delete(documents).where(eq(documents.id, req.params.id));
+
+		// Clean up stored file (best-effort)
+		try {
+			await unlink(doc.storagePath);
+		} catch (fileErr) {
+			logger.warn("Failed to delete stored file", {
+				documentId: doc.id,
+				storagePath: doc.storagePath,
+				error: fileErr instanceof Error ? fileErr.message : "Unknown",
+			});
+		}
+
+		logger.info("Document deleted", { documentId: doc.id });
+		res.status(204).end();
 	} catch (err) {
 		next(err);
 	}

@@ -5,7 +5,7 @@ import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { extractionSchemas } from "../db/schema.js";
 import { logger } from "../lib/logger.js";
-import { parseFile } from "../services/file-parser.js";
+import { parseFileSafe } from "../services/file-parser.js";
 import { recommendSchemas } from "../services/schema-recommender.js";
 
 const upload = multer({
@@ -26,13 +26,40 @@ recommendationsRouter.post(
 				return;
 			}
 
-			// Parse each file
-			const documents = await Promise.all(
+			// Parse each file resiliently
+			const parseResults = await Promise.all(
 				files.map(async (file) => {
-					const text = await parseFile(file.path, file.mimetype);
-					return { filename: file.originalname, text };
+					const result = await parseFileSafe(file.path, file.mimetype);
+					return { filename: file.originalname, ...result };
 				}),
 			);
+
+			// Separate valid documents from warnings
+			const fileWarnings: Array<{ filename: string; warning: string }> = [];
+			const validDocuments: Array<{ filename: string; text: string }> = [];
+
+			for (const r of parseResults) {
+				if (r.quality === "failed" || r.quality === "empty") {
+					fileWarnings.push({
+						filename: r.filename,
+						warning: r.warning ?? "File could not be processed",
+					});
+				} else {
+					if (r.warning) {
+						fileWarnings.push({ filename: r.filename, warning: r.warning });
+					}
+					validDocuments.push({ filename: r.filename, text: r.text });
+				}
+			}
+
+			if (validDocuments.length === 0) {
+				res.status(422).json({
+					error:
+						"None of the uploaded files could be parsed. Please try different files.",
+					warnings: fileWarnings,
+				});
+				return;
+			}
 
 			// Fetch active schemas for dedup awareness
 			const activeSchemas = await db
@@ -40,14 +67,19 @@ recommendationsRouter.post(
 				.from(extractionSchemas)
 				.where(eq(extractionSchemas.status, "active"));
 
-			const result = await recommendSchemas(documents, activeSchemas);
+			const result = await recommendSchemas(validDocuments, activeSchemas);
 
 			logger.info("Recommendations generated", {
 				fileCount: files.length,
+				validCount: validDocuments.length,
+				warningCount: fileWarnings.length,
 				recommendationCount: result.recommendations.length,
 			});
 
-			res.json(result);
+			res.json({
+				...result,
+				warnings: fileWarnings.length > 0 ? fileWarnings : undefined,
+			});
 		} catch (err) {
 			next(err);
 		}

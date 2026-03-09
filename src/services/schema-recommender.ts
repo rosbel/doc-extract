@@ -4,7 +4,7 @@ import { getOpenRouterClient } from "../lib/openrouter.js";
 import { parseLLMResponse } from "../lib/parse-llm-response.js";
 import type { ExtractionSchema } from "../types/index.js";
 
-const MAX_TEXT_LENGTH = 4000;
+const MAX_TEXT_LENGTH = 8000;
 
 export interface RecommendedSchema {
 	name: string;
@@ -18,6 +18,7 @@ export interface RecommendedSchema {
 export interface SchemaRecommendationResult {
 	recommendations: RecommendedSchema[];
 	analysis: string;
+	warnings?: Array<{ filename: string; warning: string }>;
 }
 
 interface DocumentInput {
@@ -45,17 +46,33 @@ export async function recommendSchemas(
 					.join("\n")}`
 			: "";
 
-	const response = await client.chat.completions.create({
+	let response;
+	try {
+		response = await client.chat.completions.create({
 		model: config.openrouter.model,
 		messages: [
 			{
 				role: "system",
 				content: `You are a document analysis expert. Analyze the provided documents and recommend JSON Schema definitions for structured data extraction.
 
-Guidelines:
+Document categories you should recognize include (but are not limited to):
+- Resumes / CVs
+- Invoices and receipts
+- Contracts and agreements
+- Reports (financial, medical, technical)
+- Forms (applications, registrations, surveys)
+- Letters and correspondence
+- Manuals and documentation
+
+Schema design guidelines:
 - Identify distinct document types among the uploaded documents
 - Group similar documents together under one schema
+- Use nested objects for logically grouped data (e.g., "contactInfo" with name, email, phone)
+- Use arrays for repeated entries (e.g., "workExperience" array of objects with company, role, dates)
+- Every property MUST include a "description" field explaining what it captures
+- For date fields, specify the expected format in the description (e.g., "ISO 8601 date string YYYY-MM-DD")
 - Use appropriate JSON Schema field types (string, number, boolean, array, object)
+- Design schemas that generalize beyond the specific sample — capture the document TYPE, not just this one instance
 - Suggest classification hints (keywords/phrases that identify this document type)
 - If an existing schema already covers a document type, mention it in your reasoning and skip recommending a duplicate
 - Each jsonSchema field must be a valid JSON object serialized as a string, following JSON Schema draft-07 format with "type": "object" and "properties"
@@ -135,7 +152,17 @@ ${documentSummaries}${existingDescriptions}`,
 				},
 			},
 		},
-	});
+		});
+	} catch (err) {
+		const message =
+			err instanceof Error ? err.message : "Unknown error";
+		logger.error("LLM call failed for schema recommendation", {
+			error: message,
+		});
+		throw new Error(
+			"Failed to analyze documents — the AI service is temporarily unavailable. Please try again.",
+		);
+	}
 
 	const content = response.choices[0]?.message?.content;
 	if (!content) {
@@ -144,83 +171,138 @@ ${documentSummaries}${existingDescriptions}`,
 
 	const parsed = parseLLMResponse<Record<string, unknown>>(content);
 
-	// The model may nest the result under a wrapper key (e.g. "schema_recommendations")
-	// or return it directly. Normalize to our expected shape.
-	let result: SchemaRecommendationResult;
+	logger.debug("Raw LLM response keys", { keys: Object.keys(parsed) });
 
-	if (Array.isArray(parsed.recommendations)) {
-		result = parsed as unknown as SchemaRecommendationResult;
-	} else if (Array.isArray(parsed.schemas)) {
-		// LLM used "schemas" instead of "recommendations"
-		result = {
-			recommendations: parsed.schemas as unknown as RecommendedSchema[],
-			analysis:
-				typeof parsed.analysis === "string"
-					? parsed.analysis
-					: "Analysis not provided by model",
-		};
-	} else {
-		// Check if the expected data is nested under another key
-		const nested = Object.values(parsed).find(
-			(v) =>
-				typeof v === "object" &&
-				v !== null &&
-				"recommendations" in v &&
-				Array.isArray((v as Record<string, unknown>).recommendations),
-		) as SchemaRecommendationResult | undefined;
+	// --- Find the recommendations array (LLM uses inconsistent key names) ---
+	let rawRecs: unknown[] | undefined;
 
-		if (nested) {
-			result = nested;
-		} else {
-			// Last resort: maybe the entire response IS the array of recommendations
-			const values = Object.values(parsed);
-			const arr = values.find((v) => Array.isArray(v)) as
-				| RecommendedSchema[]
-				| undefined;
-			if (arr && arr.length > 0 && typeof arr[0] === "object" && arr[0] !== null && "name" in arr[0]) {
-				const normalized = (arr as unknown as Record<string, unknown>[]).map((item) => ({
-					name: item.name as string,
-					description: (item.description ?? "") as string,
-					jsonSchema: (item.jsonSchema ?? item.json_schema ?? "{}") as string,
-					classificationHints: (item.classificationHints ??
-						item.classification_hints ??
-						[]) as string[],
-					reasoning: (item.reasoning ?? "") as string,
-					matchingDocuments: (item.matchingDocuments ??
-						item.matching_documents ??
-						[]) as string[],
-				}));
-				result = {
-					recommendations: normalized,
-					analysis:
-						typeof parsed.analysis === "string"
-							? parsed.analysis
-							: "Analysis not provided by model",
-				};
-			} else {
-				logger.error("Unexpected LLM response structure", {
-					keys: Object.keys(parsed),
-				});
-				throw new Error(
-					`LLM returned unexpected JSON structure. Top-level keys: ${Object.keys(parsed).join(", ")}`,
-				);
+	// 1) Try known key names at top level
+	for (const key of Object.keys(parsed)) {
+		const val = parsed[key];
+		if (Array.isArray(val)) {
+			rawRecs = val;
+			break;
+		}
+	}
+
+	// 2) Check if data is nested under a wrapper object
+	if (!rawRecs) {
+		for (const val of Object.values(parsed)) {
+			if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+				const inner = val as Record<string, unknown>;
+				const arr = Object.values(inner).find((v) => Array.isArray(v)) as unknown[] | undefined;
+				if (arr) {
+					rawRecs = arr;
+					break;
+				}
 			}
 		}
 	}
+
+	// 3) Top-level object is a single recommendation (flat object with schema-like keys)
+	if (!rawRecs) {
+		const hasSchemaKeys =
+			("jsonSchema" in parsed || "json_schema" in parsed || "schema" in parsed) &&
+			("description" in parsed || "name" in parsed || "category" in parsed || "documentType" in parsed);
+		if (hasSchemaKeys) {
+			rawRecs = [parsed];
+			logger.warn("LLM returned a single recommendation object, wrapping it");
+		}
+	}
+
+	// --- Find the analysis string ---
+	let rawAnalysis: string | undefined;
+	for (const [key, val] of Object.entries(parsed)) {
+		if (typeof val === "string" && !Array.isArray(parsed[key]) && key !== "jsonSchema" && key !== "json_schema") {
+			rawAnalysis = val;
+			break;
+		}
+	}
+
+	// Empty array is valid (LLM says no new schemas needed)
+	if (rawRecs && rawRecs.length === 0) {
+		return {
+			recommendations: [],
+			analysis: rawAnalysis ?? "No new schemas recommended — existing schemas already cover these documents.",
+		};
+	}
+
+	if (!rawRecs) {
+		logger.error("Unexpected LLM response structure", { keys: Object.keys(parsed) });
+		throw new Error(
+			`LLM returned unexpected JSON structure. Top-level keys: ${Object.keys(parsed).join(", ")}`,
+		);
+	}
+
+	// --- Normalize each recommendation item ---
+	const recommendations = (rawRecs as Record<string, unknown>[]).map((item) => {
+		// jsonSchema may be a string or an already-parsed object
+		let jsonSchemaStr: string;
+		const rawSchema = item.jsonSchema ?? item.json_schema ?? item.schema;
+		if (typeof rawSchema === "string") {
+			jsonSchemaStr = rawSchema;
+		} else if (typeof rawSchema === "object" && rawSchema !== null) {
+			jsonSchemaStr = JSON.stringify(rawSchema);
+		} else {
+			jsonSchemaStr = "{}";
+		}
+
+		const name = ((item.name ?? item.documentType ?? item.document_type ?? item.category ?? item.title ?? "Untitled Schema") as string);
+		const description = ((item.description ?? item.summary ?? "") as string) || `Extraction schema for ${name}`;
+
+		return {
+			name,
+			description,
+			jsonSchema: jsonSchemaStr,
+			classificationHints: ((item.classificationHints ?? item.classification_hints ?? item.hints ?? item.keywords ?? []) as string[]),
+			reasoning: ((item.reasoning ?? item.rationale ?? item.explanation ?? "") as string),
+			matchingDocuments: ((item.matchingDocuments ?? item.matching_documents ?? item.matchingFiles ?? item.documents ?? []) as string[]),
+		};
+	});
+
+	const result: SchemaRecommendationResult = {
+		recommendations,
+		analysis: rawAnalysis ?? "Document analysis complete.",
+	};
 
 	// Validate that each jsonSchema is valid JSON
 	for (const rec of result.recommendations) {
 		try {
 			JSON.parse(rec.jsonSchema);
 		} catch {
-			logger.warn("Invalid JSON in recommended schema, skipping validation", {
-				name: rec.name,
-			});
+			logger.warn("Invalid JSON in recommended schema, attempting repair", { name: rec.name });
+			rec.jsonSchema = "{}";
+		}
+	}
+
+	// Filter out no-op recommendations (empty schema + empty description = LLM says "already exists")
+	const noopRecs: RecommendedSchema[] = [];
+	result.recommendations = result.recommendations.filter((rec) => {
+		const schemaEmpty = rec.jsonSchema === "{}" || rec.jsonSchema === "";
+		const descEmpty = !rec.description;
+		if (schemaEmpty && descEmpty) {
+			noopRecs.push(rec);
+			return false;
+		}
+		return true;
+	});
+
+	// Incorporate no-op reasoning into the analysis
+	if (noopRecs.length > 0) {
+		const notes = noopRecs
+			.filter((r) => r.reasoning)
+			.map((r) => r.reasoning)
+			.join(" ");
+		if (notes) {
+			result.analysis = result.analysis === "Document analysis complete."
+				? notes
+				: `${result.analysis} ${notes}`;
 		}
 	}
 
 	logger.info("Schema recommendations generated", {
 		count: result.recommendations.length,
+		filteredCount: noopRecs.length,
 		documentCount: documents.length,
 	});
 

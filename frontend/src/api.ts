@@ -7,7 +7,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 	});
 	if (!res.ok) {
 		const body = await res.json().catch(() => ({}));
-		throw new Error(body.error || `Request failed: ${res.status}`);
+		const details = body.details?.map((d: { path: string; message: string }) => `${d.path}: ${d.message}`).join("; ");
+		throw new Error(details ? `${body.error}: ${details}` : (body.error || `Request failed: ${res.status}`));
 	}
 	return res.json();
 }
@@ -69,6 +70,7 @@ export interface SchemaRecommendation {
 export interface RecommendationResponse {
 	recommendations: SchemaRecommendation[];
 	analysis: string;
+	warnings?: Array<{ filename: string; warning: string }>;
 }
 
 export const api = {
@@ -110,6 +112,30 @@ export const api = {
 		},
 		reprocess: (id: string) =>
 			request<Document>(`/documents/${id}/reprocess`, { method: "POST" }),
+		delete: async (id: string) => {
+			const res = await fetch(`${BASE}/documents/${id}`, { method: "DELETE" });
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				throw new Error(body.error || `Delete failed: ${res.status}`);
+			}
+		},
+		stream: (id: string, onEvent: (data: { type: string; status?: string; extractionConfidence?: number | null; errorMessage?: string | null }) => void) => {
+			const eventSource = new EventSource(`${BASE}/documents/${id}/stream`);
+			eventSource.onmessage = (event) => {
+				const data = JSON.parse(event.data);
+				onEvent(data);
+				if (data.type === "status" && (data.status === "completed" || data.status === "failed")) {
+					eventSource.close();
+				}
+				if (data.type === "timeout" || data.type === "error") {
+					eventSource.close();
+				}
+			};
+			eventSource.onerror = () => {
+				eventSource.close();
+			};
+			return eventSource;
+		},
 	},
 	recommendations: {
 		analyze: async (files: File[]): Promise<RecommendationResponse> => {

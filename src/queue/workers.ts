@@ -1,14 +1,14 @@
 import { Worker } from "bullmq";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { documents, extractionSchemas, processingJobs } from "../db/schema.js";
 import { logger } from "../lib/logger.js";
 import { classifyDocument } from "../services/classifier.js";
 import { extractDocument } from "../services/extractor.js";
 import { indexDocument } from "../services/vector-store.js";
+import { redisConnectionOpts } from "./index.js";
 import type { JobData } from "./jobs.js";
 import { enqueueExtraction } from "./jobs.js";
-import { redisConnectionOpts } from "./index.js";
 
 async function handleClassification(documentId: string) {
 	// Update status
@@ -213,19 +213,30 @@ export function createWorker() {
 			attempt: job?.attemptsMade,
 		});
 
-		// Safety net: ensure document is marked failed when all retries exhausted
-		if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
-			try {
+		if (!job) return;
+
+		try {
+			// Increment retryCount on every failure attempt
+			await db
+				.update(documents)
+				.set({
+					retryCount: sql`${documents.retryCount} + 1`,
+					updatedAt: new Date(),
+				})
+				.where(eq(documents.id, job.data.documentId));
+
+			// Mark as failed when all retries exhausted
+			if (job.attemptsMade >= (job.opts.attempts ?? 1)) {
 				await db
 					.update(documents)
 					.set({ status: "failed", errorMessage: err.message, updatedAt: new Date() })
 					.where(eq(documents.id, job.data.documentId));
-			} catch (dbErr) {
-				logger.error("Failed to mark document as failed after retry exhaustion", {
-					documentId: job.data.documentId,
-					error: dbErr instanceof Error ? dbErr.message : "Unknown",
-				});
 			}
+		} catch (dbErr) {
+			logger.error("Failed to update document after job failure", {
+				documentId: job.data.documentId,
+				error: dbErr instanceof Error ? dbErr.message : "Unknown",
+			});
 		}
 	});
 
