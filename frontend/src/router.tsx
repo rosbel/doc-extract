@@ -26,6 +26,10 @@ const NotFound = lazy(() =>
 	import("./pages/NotFound").then((m) => ({ default: m.NotFound })),
 );
 
+const Admin = lazy(() =>
+	import("./pages/Admin").then((m) => ({ default: m.Admin })),
+);
+
 function withSuspense(node: ReactNode) {
 	return <Suspense fallback={<p>Loading...</p>}>{node}</Suspense>;
 }
@@ -58,6 +62,10 @@ export const appRoutes: RouteObject[] = [
 			{
 				path: "schemas/:schemaId/edit",
 				element: withSuspense(<SchemaWorkbenchPage mode="edit" />),
+			},
+			{
+				path: "admin",
+				element: withSuspense(<Admin />),
 			},
 			{
 				path: "*",

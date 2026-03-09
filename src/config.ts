@@ -3,6 +3,13 @@ import "dotenv/config";
 export const config = {
 	port: Number(process.env.PORT) || 3001,
 	nodeEnv: process.env.NODE_ENV || "development",
+	adminToken: process.env.ADMIN_TOKEN || "",
+	adminSecurity: {
+		maxFailedAttempts: Number(process.env.ADMIN_MAX_FAILED_ATTEMPTS) || 5,
+		lockoutMs: Number(process.env.ADMIN_LOCKOUT_MS) || 15 * 60 * 1000,
+		failureWindowMs:
+			Number(process.env.ADMIN_FAILURE_WINDOW_MS) || 10 * 60 * 1000,
+	},
 	databaseUrl:
 		process.env.DATABASE_URL ||
 		"postgresql://postgres:postgres@localhost:5432/extraction_service",

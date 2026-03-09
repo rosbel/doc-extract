@@ -14,6 +14,10 @@ import { buildSearchCorpus } from "../services/search-index.js";
 import { getLatestSchemaRevision } from "../services/schema-lifecycle.js";
 import { indexDocument } from "../services/vector-store.js";
 import { redisConnectionOpts } from "./index.js";
+import {
+	isMaintenanceModeEnabled,
+	writeWorkerHeartbeat,
+} from "./redis.js";
 import type { JobData } from "./jobs.js";
 import { enqueueExtraction } from "./jobs.js";
 
@@ -277,6 +281,11 @@ export function createWorker() {
 	const worker = new Worker<JobData>(
 		"document-processing",
 		async (job) => {
+			await writeWorkerHeartbeat("online");
+			while (await isMaintenanceModeEnabled()) {
+				await new Promise((resolve) => setTimeout(resolve, 1_000));
+			}
+
 			logger.info("Processing job", {
 				jobId: job.id,
 				type: job.data.type,
@@ -303,10 +312,12 @@ export function createWorker() {
 	);
 
 	worker.on("completed", (job) => {
+		void writeWorkerHeartbeat("online");
 		logger.info("Job completed", { jobId: job.id });
 	});
 
 	worker.on("failed", async (job, err) => {
+		await writeWorkerHeartbeat("online");
 		logger.error("Job failed", {
 			jobId: job?.id,
 			error: err.message,

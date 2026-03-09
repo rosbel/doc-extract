@@ -74,3 +74,26 @@ export const searchInput = z.object({
 	mode: z.enum(["keyword", "semantic", "hybrid"]).optional().default("hybrid"),
 	limit: z.coerce.number().int().min(1).max(50).optional().default(10),
 });
+
+export const adminDocumentsQueryInput = z.object({
+	status: z
+		.enum([
+			"pending",
+			"classifying",
+			"extracting",
+			"completed",
+			"failed",
+			"duplicate",
+		])
+		.optional(),
+	page: z.coerce.number().int().min(1).optional().default(1),
+	limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
+export const adminConfirmationInput = z.object({
+	confirmation: z.string().trim().min(1),
+});
+
+export const adminQueueClearInput = adminConfirmationInput.extend({
+	scope: z.enum(["completed", "failed", "waiting_delayed"]),
+});

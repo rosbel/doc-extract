@@ -24,6 +24,10 @@ vi.mock("./pages/NotFound", () => ({
 	NotFound: () => <div>Not Found Page</div>,
 }));
 
+vi.mock("./pages/Admin", () => ({
+	Admin: () => <div>Admin Page</div>,
+}));
+
 import { appRoutes } from "./router";
 
 function renderApp(initialEntries: string[]) {
@@ -43,6 +47,7 @@ describe("App routing", () => {
 		expect(await screen.findByText("Documents Page")).toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Documents" })).toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Schemas" })).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Admin" })).toBeInTheDocument();
 		expect(
 			screen.queryByRole("button", { name: /recommend/i }),
 		).not.toBeInTheDocument();
@@ -79,5 +84,12 @@ describe("App routing", () => {
 		expect(router.state.location.pathname).toBe("/does-not-exist");
 		expect(screen.getByRole("link", { name: "Documents" })).toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Schemas" })).toBeInTheDocument();
+	});
+
+	it("supports direct navigation to the admin route", async () => {
+		const router = renderApp(["/admin"]);
+
+		expect(await screen.findByText("Admin Page")).toBeInTheDocument();
+		expect(router.state.location.pathname).toBe("/admin");
 	});
 });

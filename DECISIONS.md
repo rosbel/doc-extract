@@ -301,6 +301,8 @@ This is a convenience feature that bootstraps schema creation. Users upload repr
 ### What's Not Included (and Why)
 
 - **Authentication/authorization**: Not in scope for this challenge. In production, this would be an auth middleware layer (JWT, API keys, etc.).
+- **Admin access model**: The internal admin console uses a shared `ADMIN_TOKEN` header rather than full user accounts. This keeps the MVP operationally simple while still protecting destructive endpoints.
+- **Admin brute-force protection**: Repeated invalid admin token attempts are tracked and temporarily locked out in process memory on the API server. This is an explicit MVP tradeoff: it protects a single instance from naive brute-force attempts, but it is not durable across restarts and is not coordinated across multiple replicas. A Redis-backed limiter would be the production evolution.
 - **API versioning**: Single version is sufficient for the current scope.
 - **Rate limiting at HTTP level**: Queue-level rate limiting (10 jobs/60s) protects the LLM API; HTTP rate limiting would be added via middleware (e.g., express-rate-limit) in production.
 - **Webhook/callback notifications**: Polling-based status tracking is simpler and sufficient. Webhooks would be added for system-to-system integration.

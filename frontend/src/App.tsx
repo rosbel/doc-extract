@@ -25,6 +25,9 @@ export default function App() {
 					<NavLink to="/schemas" className={navLinkClassName}>
 						Schemas
 					</NavLink>
+					<NavLink to="/admin" className={navLinkClassName}>
+						Admin
+					</NavLink>
 				</div>
 			</nav>
 
