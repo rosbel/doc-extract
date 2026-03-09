@@ -13,6 +13,7 @@ Idempotently start all services for the schema-driven document extraction servic
 |-----------|------|---------|--------------|
 | PostgreSQL | 5432 | `docker compose up -d` | `pg_isready -h localhost` |
 | Redis | 6379 | `docker compose up -d` | `docker compose exec redis redis-cli ping` |
+| **All services** | 3001, 5173 | `pnpm dev:all` | See individual checks below |
 | Backend API | 3001 | `pnpm dev` | `curl -s http://localhost:3001/health` |
 | Worker | — | `pnpm worker` | `pgrep -f worker-runner` |
 | Frontend | 5173 | `cd frontend && pnpm dev` | `curl -s -o /dev/null -w '%{http_code}' http://localhost:5173` |
@@ -50,65 +51,29 @@ docker compose exec postgres pg_isready
 
 ---
 
-### Phase 2: Backend API
+### Phase 2: Backend API, Worker & Frontend
 
-**Check:**
+**Check** if all services are already running:
 ```bash
 lsof -i :3001 -sTCP:LISTEN
+pgrep -f worker-runner
+lsof -i :5173 -sTCP:LISTEN
 ```
 
-**Start** (only if port 3001 is not in use):
+**Start** (only if any service is not running):
 Run using Bash tool with `run_in_background: true`:
 ```bash
-cd /Users/rosbel/Development/gently-ai/schema-driven-document-extraction-service && pnpm dev
+cd /Users/rosbel/Development/gently-ai/schema-driven-document-extraction-service && pnpm dev:all
 ```
+This starts backend (port 3001), worker, and frontend (port 5173) concurrently via `concurrently`.
 
 **Verify** (wait up to 15s):
 ```bash
 curl -sf http://localhost:3001/health
-```
-Expected response: `{"status":"ok","timestamp":"..."}`
-
----
-
-### Phase 3: Worker
-
-**Check:**
-```bash
 pgrep -f worker-runner
-```
-
-**Start** (only if not found):
-Run using Bash tool with `run_in_background: true`:
-```bash
-cd /Users/rosbel/Development/gently-ai/schema-driven-document-extraction-service && pnpm worker
-```
-
-**Verify:**
-```bash
-pgrep -f worker-runner
-```
-
----
-
-### Phase 4: Frontend
-
-**Check:**
-```bash
-lsof -i :5173 -sTCP:LISTEN
-```
-
-**Start** (only if port 5173 is not in use):
-Run using Bash tool with `run_in_background: true`:
-```bash
-cd /Users/rosbel/Development/gently-ai/schema-driven-document-extraction-service/frontend && pnpm dev
-```
-
-**Verify** (wait up to 15s):
-```bash
 curl -sf -o /dev/null -w '%{http_code}' http://localhost:5173
 ```
-Expected: `200`
+Expected: health JSON from backend, worker PID, and `200` from frontend.
 
 ---
 
