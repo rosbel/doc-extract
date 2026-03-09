@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type DocumentDetail as DocumentDetailType } from "../api";
 import { ProcessingStepper } from "../components/ProcessingStepper";
 import { StatusBadge } from "../components/StatusBadge";
@@ -16,6 +16,8 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 	const [error, setError] = useState<string | null>(null);
 	const [reprocessing, setReprocessing] = useState(false);
 	const [reprocessError, setReprocessError] = useState<string | null>(null);
+	const [deleting, setDeleting] = useState(false);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -33,29 +35,19 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 		load();
 	}, [load]);
 
-	// Lightweight polling: fetch status only, full reload on status change
+	// SSE streaming: subscribe to status changes while document is processing
 	const docStatus = doc?.status;
-	const lastPolledStatusRef = useRef(docStatus);
-
-	useEffect(() => {
-		lastPolledStatusRef.current = docStatus;
-	}, [docStatus]);
 
 	useEffect(() => {
 		if (!docStatus || !PROCESSING_STATUSES.includes(docStatus)) return;
 
-		const interval = setInterval(async () => {
-			try {
-				const statusData = await api.documents.status(documentId);
-				if (statusData.status !== lastPolledStatusRef.current) {
-					lastPolledStatusRef.current = statusData.status;
-					load();
-				}
-			} catch {
-				// Silently ignore polling errors
+		const eventSource = api.documents.stream(documentId, (data) => {
+			if (data.type === "status") {
+				load();
 			}
-		}, 3000);
-		return () => clearInterval(interval);
+		});
+
+		return () => eventSource.close();
 	}, [docStatus, documentId, load]);
 
 	const isInProcessingState = doc
@@ -84,6 +76,20 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 			setReprocessing(false);
 		}
 	}, [reprocessing, doc, load]);
+
+	const handleDelete = useCallback(async () => {
+		if (deleting || !doc) return;
+		if (!window.confirm(`Delete "${doc.filename}"? This cannot be undone.`)) return;
+		setDeleting(true);
+		setDeleteError(null);
+		try {
+			await api.documents.delete(doc.id);
+			onBack();
+		} catch (err) {
+			setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+			setDeleting(false);
+		}
+	}, [deleting, doc, onBack]);
 
 	if (loading && !doc) return <p className="text-gray-500">Loading...</p>;
 	if (error) return <p className="text-red-600">{error}</p>;
@@ -115,6 +121,16 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 						)}
 						{reprocessing ? "Reprocessing..." : "Reprocess"}
 					</button>
+					<button
+						onClick={handleDelete}
+						disabled={deleting}
+						className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+					>
+						{deleting && (
+							<span className="h-3.5 w-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+						)}
+						{deleting ? "Deleting..." : "Delete"}
+					</button>
 				</div>
 			</div>
 
@@ -128,6 +144,21 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 					</div>
 					<button
 						onClick={() => setReprocessError(null)}
+						className="text-red-400 hover:text-red-600 text-lg leading-none"
+					>
+						&times;
+					</button>
+				</div>
+			)}
+
+			{deleteError && (
+				<div className="bg-red-50 rounded-lg border border-red-200 p-4 flex justify-between items-start">
+					<div>
+						<h2 className="font-semibold text-sm text-red-600 uppercase">Delete Error</h2>
+						<p className="mt-1 text-sm text-red-700">{deleteError}</p>
+					</div>
+					<button
+						onClick={() => setDeleteError(null)}
 						className="text-red-400 hover:text-red-600 text-lg leading-none"
 					>
 						&times;
