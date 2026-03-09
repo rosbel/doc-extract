@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type DocumentDetail as DocumentDetailType } from "../api";
+import { ProcessingStepper } from "../components/ProcessingStepper";
 import { StatusBadge } from "../components/StatusBadge";
 
 const PROCESSING_STATUSES = ["pending", "classifying", "extracting"];
@@ -104,23 +105,6 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 				</div>
 				<div className="flex items-center gap-3">
 					<StatusBadge status={doc.status} />
-					{isProcessing && !reprocessing && (
-						<span className="inline-flex items-center gap-1.5 text-sm text-blue-600">
-							<span className="relative flex h-2 w-2">
-								<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-								<span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-							</span>
-							In progress
-						</span>
-					)}
-					{isStuck && (
-						<span className="inline-flex items-center gap-1.5 text-sm text-amber-600">
-							<span className="relative flex h-2 w-2">
-								<span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-							</span>
-							Stalled
-						</span>
-					)}
 					<button
 						onClick={handleReprocess}
 						disabled={reprocessing}
@@ -133,6 +117,8 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 					</button>
 				</div>
 			</div>
+
+			<ProcessingStepper status={doc.status} isStuck={isStuck} />
 
 			{reprocessError && (
 				<div className="bg-red-50 rounded-lg border border-red-200 p-4 flex justify-between items-start">
