@@ -4,7 +4,7 @@ import pdfParse from "pdf-parse";
 import { logger } from "../lib/logger.js";
 
 const PARSERS: Record<string, (buffer: Buffer) => Promise<string>> = {
-	"application/pdf": parsePdf,
+	"application/pdf": parsePdfWithTimeout,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":
 		parseDocx,
 	"text/plain": parseText,
@@ -12,11 +12,6 @@ const PARSERS: Record<string, (buffer: Buffer) => Promise<string>> = {
 	"text/markdown": parseText,
 	"application/json": parseJson,
 };
-
-async function parsePdf(buffer: Buffer): Promise<string> {
-	const result = await pdfParse(buffer);
-	return result.text;
-}
 
 async function parseDocx(buffer: Buffer): Promise<string> {
 	const result = await mammoth.extractRawText({ buffer });

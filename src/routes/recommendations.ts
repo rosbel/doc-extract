@@ -1,3 +1,4 @@
+import { unlink } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { Router } from "express";
 import multer from "multer";
@@ -15,13 +16,29 @@ const upload = multer({
 
 export const recommendationsRouter = Router();
 
+async function cleanupUploadedFiles(files: Express.Multer.File[]) {
+	await Promise.allSettled(
+		files.map(async (file) => {
+			try {
+				await unlink(file.path);
+			} catch (err) {
+				logger.warn("Failed to clean up recommendation upload", {
+					filePath: file.path,
+					error: err instanceof Error ? err.message : "Unknown",
+				});
+			}
+		}),
+	);
+}
+
 recommendationsRouter.post(
 	"/",
 	upload.array("files", 10),
 	async (req, res, next) => {
+		const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+
 		try {
-			const files = req.files as Express.Multer.File[] | undefined;
-			if (!files || files.length === 0) {
+			if (files.length === 0) {
 				res.status(400).json({ error: "No files uploaded" });
 				return;
 			}
@@ -82,6 +99,10 @@ recommendationsRouter.post(
 			});
 		} catch (err) {
 			next(err);
+		} finally {
+			if (files.length > 0) {
+				await cleanupUploadedFiles(files);
+			}
 		}
 	},
 );

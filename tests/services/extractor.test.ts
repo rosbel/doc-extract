@@ -28,7 +28,10 @@ describe("extractDocument", () => {
 
 		const result = await extractDocument(
 			"Invoice from Acme Corp. Total: $500",
-			{ type: "object", properties: { vendor: { type: "string" }, amount: { type: "number" } } },
+			{
+				type: "object",
+				properties: { vendor: { type: "string" }, amount: { type: "number" } },
+			},
 			"Invoice",
 		);
 
@@ -57,15 +60,50 @@ describe("extractDocument", () => {
 			"Resume",
 		);
 
-		const call = mockCreate.mock.lastCall![0];
+		const call = mockCreate.mock.lastCall?.[0];
+		if (!call) {
+			throw new Error("Expected LLM call");
+		}
 		const jsonSchema = call.response_format.json_schema.schema;
 		expect(jsonSchema.additionalProperties).toBe(false);
 		expect(jsonSchema.required).toContain("extractedData");
 		expect(jsonSchema.required).toContain("confidence");
 
 		// Check the nested user schema is also normalized
-		expect(jsonSchema.properties.extractedData.additionalProperties).toBe(false);
+		expect(jsonSchema.properties.extractedData.additionalProperties).toBe(
+			false,
+		);
 		expect(jsonSchema.properties.extractedData.required).toContain("name");
+	});
+
+	it("should truncate document text before sending it to the LLM", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							extractedData: { name: "John" },
+							confidence: 0.7,
+						}),
+					},
+				},
+			],
+		});
+
+		await extractDocument(
+			"x".repeat(10000),
+			{ type: "object", properties: { name: { type: "string" } } },
+			"Resume",
+		);
+
+		const call = mockCreate.mock.lastCall?.[0];
+		if (!call) {
+			throw new Error("Expected LLM call");
+		}
+		const userMessage = call.messages.find(
+			(message: { role: string }) => message.role === "user",
+		);
+		expect(userMessage.content.length).toBeLessThan(10000);
 	});
 
 	it("should throw on empty LLM response", async () => {

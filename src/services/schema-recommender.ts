@@ -1,3 +1,4 @@
+import type { ChatCompletion } from "openai/resources/chat/completions";
 import { config } from "../config.js";
 import { logger } from "../lib/logger.js";
 import { getOpenRouterClient } from "../lib/openrouter.js";
@@ -46,14 +47,14 @@ export async function recommendSchemas(
 					.join("\n")}`
 			: "";
 
-	let response;
+	let response: ChatCompletion;
 	try {
 		response = await client.chat.completions.create({
-		model: config.openrouter.model,
-		messages: [
-			{
-				role: "system",
-				content: `You are a document analysis expert. Analyze the provided documents and recommend JSON Schema definitions for structured data extraction.
+			model: config.openrouter.model,
+			messages: [
+				{
+					role: "system",
+					content: `You are a document analysis expert. Analyze the provided documents and recommend JSON Schema definitions for structured data extraction.
 
 Document categories you should recognize include (but are not limited to):
 - Resumes / CVs
@@ -78,84 +79,83 @@ Schema design guidelines:
 - Each jsonSchema field must be a valid JSON object serialized as a string, following JSON Schema draft-07 format with "type": "object" and "properties"
 
 IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or after the JSON.`,
-			},
-			{
-				role: "user",
-				content: `Analyze these documents and recommend extraction schemas:
+				},
+				{
+					role: "user",
+					content: `Analyze these documents and recommend extraction schemas:
 
 ${documentSummaries}${existingDescriptions}`,
-			},
-		],
-		response_format: {
-			type: "json_schema",
-			json_schema: {
-				name: "schema_recommendations",
-				strict: true,
-				schema: {
-					type: "object",
-					properties: {
-						recommendations: {
-							type: "array",
-							items: {
-								type: "object",
-								properties: {
-									name: {
-										type: "string",
-										description: "Human-readable name for the schema",
+				},
+			],
+			response_format: {
+				type: "json_schema",
+				json_schema: {
+					name: "schema_recommendations",
+					strict: true,
+					schema: {
+						type: "object",
+						properties: {
+							recommendations: {
+								type: "array",
+								items: {
+									type: "object",
+									properties: {
+										name: {
+											type: "string",
+											description: "Human-readable name for the schema",
+										},
+										description: {
+											type: "string",
+											description: "Description of what this schema extracts",
+										},
+										jsonSchema: {
+											type: "string",
+											description:
+												"JSON Schema definition as a JSON-encoded string",
+										},
+										classificationHints: {
+											type: "array",
+											items: { type: "string" },
+											description:
+												"Keywords or phrases that identify this document type",
+										},
+										reasoning: {
+											type: "string",
+											description:
+												"Why this schema was recommended based on the documents",
+										},
+										matchingDocuments: {
+											type: "array",
+											items: { type: "string" },
+											description:
+												"Filenames of documents that match this schema",
+										},
 									},
-									description: {
-										type: "string",
-										description: "Description of what this schema extracts",
-									},
-									jsonSchema: {
-										type: "string",
-										description:
-											"JSON Schema definition as a JSON-encoded string",
-									},
-									classificationHints: {
-										type: "array",
-										items: { type: "string" },
-										description:
-											"Keywords or phrases that identify this document type",
-									},
-									reasoning: {
-										type: "string",
-										description:
-											"Why this schema was recommended based on the documents",
-									},
-									matchingDocuments: {
-										type: "array",
-										items: { type: "string" },
-										description:
-											"Filenames of documents that match this schema",
-									},
+									required: [
+										"name",
+										"description",
+										"jsonSchema",
+										"classificationHints",
+										"reasoning",
+										"matchingDocuments",
+									],
+									additionalProperties: false,
 								},
-								required: [
-									"name",
-									"description",
-									"jsonSchema",
-									"classificationHints",
-									"reasoning",
-									"matchingDocuments",
-								],
-								additionalProperties: false,
+							},
+							analysis: {
+								type: "string",
+								description:
+									"Overall summary of the document analysis and recommendations",
 							},
 						},
-						analysis: {
-							type: "string",
-							description:
-								"Overall summary of the document analysis and recommendations",
-						},
+						required: ["recommendations", "analysis"],
+						additionalProperties: false,
 					},
-					required: ["recommendations", "analysis"],
-					additionalProperties: false,
 				},
 			},
-		},
 		});
 	} catch (err) {
-		const message =
-			err instanceof Error ? err.message : "Unknown error";
+		const message = err instanceof Error ? err.message : "Unknown error";
 		logger.error("LLM call failed for schema recommendation", {
 			error: message,
 		});
@@ -190,7 +190,9 @@ ${documentSummaries}${existingDescriptions}`,
 		for (const val of Object.values(parsed)) {
 			if (typeof val === "object" && val !== null && !Array.isArray(val)) {
 				const inner = val as Record<string, unknown>;
-				const arr = Object.values(inner).find((v) => Array.isArray(v)) as unknown[] | undefined;
+				const arr = Object.values(inner).find((v) => Array.isArray(v)) as
+					| unknown[]
+					| undefined;
 				if (arr) {
 					rawRecs = arr;
 					break;
@@ -202,8 +204,13 @@ ${documentSummaries}${existingDescriptions}`,
 	// 3) Top-level object is a single recommendation (flat object with schema-like keys)
 	if (!rawRecs) {
 		const hasSchemaKeys =
-			("jsonSchema" in parsed || "json_schema" in parsed || "schema" in parsed) &&
-			("description" in parsed || "name" in parsed || "category" in parsed || "documentType" in parsed);
+			("jsonSchema" in parsed ||
+				"json_schema" in parsed ||
+				"schema" in parsed) &&
+			("description" in parsed ||
+				"name" in parsed ||
+				"category" in parsed ||
+				"documentType" in parsed);
 		if (hasSchemaKeys) {
 			rawRecs = [parsed];
 			logger.warn("LLM returned a single recommendation object, wrapping it");
@@ -213,7 +220,12 @@ ${documentSummaries}${existingDescriptions}`,
 	// --- Find the analysis string ---
 	let rawAnalysis: string | undefined;
 	for (const [key, val] of Object.entries(parsed)) {
-		if (typeof val === "string" && !Array.isArray(parsed[key]) && key !== "jsonSchema" && key !== "json_schema") {
+		if (
+			typeof val === "string" &&
+			!Array.isArray(parsed[key]) &&
+			key !== "jsonSchema" &&
+			key !== "json_schema"
+		) {
 			rawAnalysis = val;
 			break;
 		}
@@ -223,12 +235,16 @@ ${documentSummaries}${existingDescriptions}`,
 	if (rawRecs && rawRecs.length === 0) {
 		return {
 			recommendations: [],
-			analysis: rawAnalysis ?? "No new schemas recommended — existing schemas already cover these documents.",
+			analysis:
+				rawAnalysis ??
+				"No new schemas recommended — existing schemas already cover these documents.",
 		};
 	}
 
 	if (!rawRecs) {
-		logger.error("Unexpected LLM response structure", { keys: Object.keys(parsed) });
+		logger.error("Unexpected LLM response structure", {
+			keys: Object.keys(parsed),
+		});
 		throw new Error(
 			`LLM returned unexpected JSON structure. Top-level keys: ${Object.keys(parsed).join(", ")}`,
 		);
@@ -247,16 +263,34 @@ ${documentSummaries}${existingDescriptions}`,
 			jsonSchemaStr = "{}";
 		}
 
-		const name = ((item.name ?? item.documentType ?? item.document_type ?? item.category ?? item.title ?? "Untitled Schema") as string);
-		const description = ((item.description ?? item.summary ?? "") as string) || `Extraction schema for ${name}`;
+		const name = (item.name ??
+			item.documentType ??
+			item.document_type ??
+			item.category ??
+			item.title ??
+			"Untitled Schema") as string;
+		const description =
+			((item.description ?? item.summary ?? "") as string) ||
+			`Extraction schema for ${name}`;
 
 		return {
 			name,
 			description,
 			jsonSchema: jsonSchemaStr,
-			classificationHints: ((item.classificationHints ?? item.classification_hints ?? item.hints ?? item.keywords ?? []) as string[]),
-			reasoning: ((item.reasoning ?? item.rationale ?? item.explanation ?? "") as string),
-			matchingDocuments: ((item.matchingDocuments ?? item.matching_documents ?? item.matchingFiles ?? item.documents ?? []) as string[]),
+			classificationHints: (item.classificationHints ??
+				item.classification_hints ??
+				item.hints ??
+				item.keywords ??
+				[]) as string[],
+			reasoning: (item.reasoning ??
+				item.rationale ??
+				item.explanation ??
+				"") as string,
+			matchingDocuments: (item.matchingDocuments ??
+				item.matching_documents ??
+				item.matchingFiles ??
+				item.documents ??
+				[]) as string[],
 		};
 	});
 
@@ -270,7 +304,9 @@ ${documentSummaries}${existingDescriptions}`,
 		try {
 			JSON.parse(rec.jsonSchema);
 		} catch {
-			logger.warn("Invalid JSON in recommended schema, attempting repair", { name: rec.name });
+			logger.warn("Invalid JSON in recommended schema, attempting repair", {
+				name: rec.name,
+			});
 			rec.jsonSchema = "{}";
 		}
 	}
@@ -294,9 +330,10 @@ ${documentSummaries}${existingDescriptions}`,
 			.map((r) => r.reasoning)
 			.join(" ");
 		if (notes) {
-			result.analysis = result.analysis === "Document analysis complete."
-				? notes
-				: `${result.analysis} ${notes}`;
+			result.analysis =
+				result.analysis === "Document analysis complete."
+					? notes
+					: `${result.analysis} ${notes}`;
 		}
 	}
 

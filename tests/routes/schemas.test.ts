@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSchemaInput, updateSchemaInput } from "../../src/validation/schemas.js";
+import {
+	createSchemaInput,
+	updateSchemaInput,
+} from "../../src/validation/schemas.js";
 
 describe("Schema validation", () => {
 	describe("createSchemaInput", () => {
@@ -7,7 +10,10 @@ describe("Schema validation", () => {
 			const result = createSchemaInput.parse({
 				name: "Invoice",
 				description: "An invoice document",
-				jsonSchema: { type: "object", properties: { vendor: { type: "string" } } },
+				jsonSchema: {
+					type: "object",
+					properties: { vendor: { type: "string" } },
+				},
 				classificationHints: ["invoice", "billing"],
 			});
 			expect(result.name).toBe("Invoice");

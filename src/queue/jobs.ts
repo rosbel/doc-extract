@@ -27,13 +27,14 @@ export async function enqueueClassification(documentId: string) {
 	} catch {
 		// Job may be locked (active); the add() will correctly return existing
 	}
-	await documentQueue.add("classify", { type: "classify", documentId }, { jobId });
+	await documentQueue.add(
+		"classify",
+		{ type: "classify", documentId },
+		{ jobId },
+	);
 }
 
-export async function enqueueExtraction(
-	documentId: string,
-	schemaId: string,
-) {
+export async function enqueueExtraction(documentId: string, schemaId: string) {
 	const jobId = `extract-${documentId}-${schemaId}`;
 	// Remove stale job from previous run (failed/completed) to avoid BullMQ dedup
 	try {

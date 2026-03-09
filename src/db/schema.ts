@@ -10,10 +10,7 @@ import {
 	uuid,
 } from "drizzle-orm/pg-core";
 
-export const schemaStatusEnum = pgEnum("schema_status", [
-	"active",
-	"archived",
-]);
+export const schemaStatusEnum = pgEnum("schema_status", ["active", "archived"]);
 
 export const documentStatusEnum = pgEnum("document_status", [
 	"pending",

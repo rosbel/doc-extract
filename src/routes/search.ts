@@ -12,7 +12,11 @@ searchRouter.post("/", async (req, res, next) => {
 		const input = searchInput.parse(req.body);
 
 		if (input.mode === "semantic") {
-			const results = await searchDocument(input.query, input.limit);
+			const results = await searchDocument(
+				input.query,
+				input.limit,
+				input.schemaId,
+			);
 			res.json({ results, mode: "semantic" });
 			return;
 		}
@@ -20,7 +24,7 @@ searchRouter.post("/", async (req, res, next) => {
 		// Keyword search: full-text search on raw_text + ILIKE on extracted_data
 		const conditions = [
 			sql`to_tsvector('english', coalesce(${documents.rawText}, '')) @@ plainto_tsquery('english', ${input.query})`,
-			sql`${documents.extractedData}::text ILIKE ${"%" + input.query + "%"}`,
+			sql`${documents.extractedData}::text ILIKE ${`%${input.query}%`}`,
 		];
 
 		const schemaFilter = input.schemaId

@@ -26,6 +26,7 @@ export async function indexDocument(
 	documentId: string,
 	filename: string,
 	extractedData: Record<string, unknown>,
+	schemaId?: string | null,
 ): Promise<void> {
 	const pc = getPinecone();
 	if (!pc) return;
@@ -38,7 +39,11 @@ export async function indexDocument(
 		{
 			id: documentId,
 			values: embedding,
-			metadata: { filename, summary },
+			metadata: {
+				filename,
+				summary,
+				...(schemaId ? { schemaId } : {}),
+			},
 		},
 	]);
 
@@ -48,6 +53,7 @@ export async function indexDocument(
 export async function searchDocument(
 	query: string,
 	limit: number,
+	schemaId?: string,
 ): Promise<Array<{ id: string; score: number; metadata: unknown }>> {
 	const pc = getPinecone();
 	if (!pc) {
@@ -61,6 +67,7 @@ export async function searchDocument(
 		vector: embedding,
 		topK: limit,
 		includeMetadata: true,
+		...(schemaId ? { filter: { schemaId: { $eq: schemaId } } } : {}),
 	});
 
 	return (results.matches || []).map((m) => ({

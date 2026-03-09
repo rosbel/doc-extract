@@ -20,8 +20,22 @@ const upload = multer({
 
 export const documentsRouter = Router();
 
+async function cleanupUpload(filePath: string) {
+	try {
+		await unlink(filePath);
+	} catch (err) {
+		logger.warn("Failed to clean up uploaded file", {
+			filePath,
+			error: err instanceof Error ? err.message : "Unknown",
+		});
+	}
+}
+
 // Upload document
 documentsRouter.post("/", upload.single("file"), async (req, res, next) => {
+	let shouldCleanupUpload = Boolean(req.file);
+	let contentHash: string | undefined;
+
 	try {
 		if (!req.file) {
 			res.status(400).json({ error: "No file uploaded" });
@@ -29,13 +43,15 @@ documentsRouter.post("/", upload.single("file"), async (req, res, next) => {
 		}
 
 		const fileBuffer = await readFile(req.file.path);
-		const contentHash = hashBuffer(fileBuffer);
+		contentHash = hashBuffer(fileBuffer);
 
 		// Check for duplicate
 		const existing = await db.query.documents.findFirst({
 			where: eq(documents.contentHash, contentHash),
 		});
 		if (existing) {
+			await cleanupUpload(req.file.path);
+			shouldCleanupUpload = false;
 			res.status(409).json({
 				error: "Duplicate document",
 				existingDocumentId: existing.id,
@@ -58,17 +74,54 @@ documentsRouter.post("/", upload.single("file"), async (req, res, next) => {
 				storagePath: req.file.path,
 			})
 			.returning();
+		shouldCleanupUpload = false;
 
 		// Enqueue classification
-		await enqueueClassification(doc.id);
+		try {
+			await enqueueClassification(doc.id);
+		} catch (err) {
+			const errorMessage =
+				err instanceof Error
+					? err.message
+					: "Failed to enqueue document for processing";
+			await db
+				.update(documents)
+				.set({
+					status: "failed",
+					errorMessage,
+					updatedAt: new Date(),
+				})
+				.where(eq(documents.id, doc.id));
+			throw err;
+		}
 		logger.info("Document uploaded and enqueued", { documentId: doc.id });
 
 		res.status(201).json(doc);
 	} catch (err) {
 		if (isDuplicateKeyError(err)) {
-			res.status(409).json({ error: "Duplicate document" });
+			if (req.file && shouldCleanupUpload) {
+				await cleanupUpload(req.file.path);
+				shouldCleanupUpload = false;
+			}
+
+			const duplicate = req.file
+				? await db.query.documents.findFirst({
+						where: eq(documents.contentHash, contentHash ?? ""),
+					})
+				: null;
+
+			res.status(409).json({
+				error: "Duplicate document",
+				existingDocumentId: duplicate?.id,
+			});
 			return;
 		}
+
+		if (req.file && shouldCleanupUpload) {
+			await cleanupUpload(req.file.path);
+			shouldCleanupUpload = false;
+		}
+
 		next(err);
 	}
 });

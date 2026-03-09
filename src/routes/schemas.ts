@@ -2,10 +2,7 @@ import { eq } from "drizzle-orm";
 import { Router } from "express";
 import { db } from "../db/index.js";
 import { extractionSchemas } from "../db/schema.js";
-import {
-	createSchemaInput,
-	updateSchemaInput,
-} from "../validation/schemas.js";
+import { createSchemaInput, updateSchemaInput } from "../validation/schemas.js";
 
 export const schemasRouter = Router();
 

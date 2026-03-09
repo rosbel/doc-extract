@@ -145,7 +145,12 @@ async function handleExtraction(documentId: string, schemaId: string) {
 
 		// Index in Pinecone (best-effort)
 		try {
-			await indexDocument(doc.id, doc.filename, result.extractedData);
+			await indexDocument(
+				doc.id,
+				doc.filename,
+				result.extractedData,
+				schema.id,
+			);
 		} catch (vecErr) {
 			logger.warn("Vector indexing failed (non-fatal)", {
 				documentId,
@@ -229,7 +234,11 @@ export function createWorker() {
 			if (job.attemptsMade >= (job.opts.attempts ?? 1)) {
 				await db
 					.update(documents)
-					.set({ status: "failed", errorMessage: err.message, updatedAt: new Date() })
+					.set({
+						status: "failed",
+						errorMessage: err.message,
+						updatedAt: new Date(),
+					})
 					.where(eq(documents.id, job.data.documentId));
 			}
 		} catch (dbErr) {

@@ -51,6 +51,9 @@ pnpm worker
 # 7. Start frontend (separate terminal)
 cd frontend && pnpm install && pnpm dev
 # UI available at http://localhost:5173
+
+# Or run server + worker + frontend together from the repo root
+pnpm dev:all
 ```
 
 ## Usage
@@ -94,6 +97,21 @@ cd frontend && pnpm install && pnpm dev
 4. **JSONB for extracted data** — Supports querying on dynamic structures without schema migrations.
 5. **BullMQ** — Production-grade job queue with retries, rate limiting, and stalled job recovery.
 6. **Processing jobs as audit trail** — Full history of every LLM call with timing and error details.
+
+## Technology Choices And Comfort Level
+
+- **TypeScript / Node.js / Express / PostgreSQL**: High comfort. This is the core stack used for the API, queue orchestration, and persistence.
+- **BullMQ / Redis**: High comfort. Chosen to keep ingestion asynchronous and resilient under retries and reprocessing.
+- **React / Vite**: High comfort. Used for a minimal frontend to exercise schema creation, uploads, and result inspection.
+- **Pinecone**: Moderate comfort. Included as an optional semantic search backend; the service still works without it.
+- **OpenRouter / LLM structured output**: High comfort. Used because schema-driven extraction is the central product requirement.
+
+## Deliberate Simplifications
+
+- **Authentication and authorization** are intentionally omitted because the prompt explicitly allowed that tradeoff.
+- **File storage uses the local filesystem** instead of S3/GCS. The storage path is persisted so this can be swapped behind the same document model later.
+- **Extraction text is truncated before LLM calls** to keep token usage bounded. For larger production deployments, this should evolve into chunking + schema-aware aggregation rather than a fixed cutoff.
+- **Semantic search is optional** and only active when Pinecone is configured, so the core ingestion path does not depend on vector infrastructure.
 
 ## Testing
 

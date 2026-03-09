@@ -8,6 +8,8 @@ export interface ExtractionResult {
 	confidence: number;
 }
 
+const MAX_TEXT_LENGTH = 8000;
+
 /**
  * Normalize a user-defined JSON Schema for OpenRouter structured output.
  * OpenRouter requires additionalProperties: false and all properties listed in required.
@@ -29,9 +31,7 @@ function normalizeSchema(
 				if (prop.type === "object") {
 					props[key] = normalizeSchema(prop);
 				} else if (prop.type === "array" && typeof prop.items === "object") {
-					prop.items = normalizeSchema(
-						prop.items as Record<string, unknown>,
-					);
+					prop.items = normalizeSchema(prop.items as Record<string, unknown>);
 				}
 			}
 		}
@@ -47,6 +47,7 @@ export async function extractDocument(
 ): Promise<ExtractionResult> {
 	const client = getOpenRouterClient();
 	const normalizedUserSchema = normalizeSchema(userSchema);
+	const truncatedText = documentText.slice(0, MAX_TEXT_LENGTH);
 
 	// Wrap user schema in an envelope with confidence
 	const envelopeSchema = {
@@ -73,7 +74,7 @@ IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or 
 			},
 			{
 				role: "user",
-				content: `Extract structured data from this document:\n\n${documentText}`,
+				content: `Extract structured data from this document:\n\n${truncatedText}`,
 			},
 		],
 		response_format: {
@@ -106,7 +107,9 @@ IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or 
 	if (!result.extractedData && raw.confidence !== undefined) {
 		const { confidence, ...dataFields } = raw;
 		if (Object.keys(dataFields).length > 0) {
-			logger.warn("LLM returned flat response without extractedData envelope, reconstructing");
+			logger.warn(
+				"LLM returned flat response without extractedData envelope, reconstructing",
+			);
 			result.extractedData = dataFields as Record<string, unknown>;
 			result.confidence = confidence as number;
 		}
@@ -122,7 +125,10 @@ IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or 
 		);
 	}
 
-	if (typeof result.confidence !== "number" || isNaN(result.confidence)) {
+	if (
+		typeof result.confidence !== "number" ||
+		Number.isNaN(result.confidence)
+	) {
 		throw new Error(
 			`Extractor returned invalid confidence: ${JSON.stringify(result.confidence)}`,
 		);

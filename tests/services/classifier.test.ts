@@ -54,7 +54,10 @@ describe("classifyDocument", () => {
 			],
 		});
 
-		const result = await classifyDocument("Invoice from Acme Corp for $500", mockSchemas);
+		const result = await classifyDocument(
+			"Invoice from Acme Corp for $500",
+			mockSchemas,
+		);
 
 		expect(result.schemaId).toBe("schema-1");
 		expect(result.confidence).toBe(0.95);
@@ -81,7 +84,9 @@ describe("classifyDocument", () => {
 		await classifyDocument(longText, mockSchemas);
 
 		const call = mockCreate.mock.calls[0][0];
-		const userMessage = call.messages.find((m: { role: string }) => m.role === "user");
+		const userMessage = call.messages.find(
+			(m: { role: string }) => m.role === "user",
+		);
 		expect(userMessage.content.length).toBeLessThan(10000);
 	});
 
