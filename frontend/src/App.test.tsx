@@ -20,6 +20,10 @@ vi.mock("./pages/SchemaWorkbenchPage", () => ({
 	),
 }));
 
+vi.mock("./pages/NotFound", () => ({
+	NotFound: () => <div>Not Found Page</div>,
+}));
+
 import { appRoutes } from "./router";
 
 function renderApp(initialEntries: string[]) {
@@ -66,5 +70,14 @@ describe("App routing", () => {
 
 		expect(await screen.findByText("Detail Page")).toBeInTheDocument();
 		expect(router.state.location.pathname).toBe("/documents/doc-1");
+	});
+
+	it("renders the not found page for unknown routes", async () => {
+		const router = renderApp(["/does-not-exist"]);
+
+		expect(await screen.findByText("Not Found Page")).toBeInTheDocument();
+		expect(router.state.location.pathname).toBe("/does-not-exist");
+		expect(screen.getByRole("link", { name: "Documents" })).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Schemas" })).toBeInTheDocument();
 	});
 });
