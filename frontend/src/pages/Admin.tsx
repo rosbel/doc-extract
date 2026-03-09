@@ -4,6 +4,7 @@ import {
 	useEffect,
 	useState,
 	type FormEvent,
+	type ReactNode,
 } from "react";
 import {
 	adminTokenStore,
@@ -38,6 +39,12 @@ const SERVICE_GUIDES = [
 function formatDate(value: string | null) {
 	if (!value) return "-";
 	return new Date(value).toLocaleString();
+}
+
+function truncateText(value: string | null | undefined, maxLength = 160) {
+	if (!value) return "No error message";
+	if (value.length <= maxLength) return value;
+	return `${value.slice(0, maxLength - 1)}…`;
 }
 
 function getStatusClasses(status: string) {
@@ -84,6 +91,7 @@ function MetricCard(props: {
 	value: string;
 	status?: string;
 	detail: string;
+	actions?: ReactNode;
 }) {
 	return (
 		<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -97,6 +105,9 @@ function MetricCard(props: {
 				{props.value}
 			</p>
 			<p className="mt-2 text-sm text-slate-600">{props.detail}</p>
+			{props.actions ? (
+				<div className="mt-4 flex flex-wrap gap-2">{props.actions}</div>
+			) : null}
 		</div>
 	);
 }
@@ -304,7 +315,10 @@ export function Admin() {
 	);
 	const queueBacklog =
 		(overview?.queue.counts.waiting ?? 0) + (overview?.queue.counts.delayed ?? 0);
-	const failedJobs = overview?.postgres.jobCounts.failed ?? 0;
+	const queueFailedJobs = overview?.queue.counts.failed ?? 0;
+	const liveFailedJobs = overview?.queue.failedJobs ?? [];
+	const historicalFailedDocuments = overview?.postgres.recentFailedDocuments ?? [];
+	const historicalFailedJobs = overview?.postgres.recentFailedJobs ?? [];
 
 	return (
 		<div className="space-y-8">
@@ -375,19 +389,59 @@ export function Admin() {
 								: "healthy"
 							: overview?.queue.worker.status ?? "offline"
 					}
-					detail={`active ${overview?.queue.counts.active ?? 0}, failed ${failedJobs}, worker ${overview?.queue.worker.status ?? "offline"}`}
+					detail={`active ${overview?.queue.counts.active ?? 0}, failed ${queueFailedJobs}, worker ${overview?.queue.worker.status ?? "offline"}`}
 				/>
 				<MetricCard
 					title="Pinecone"
 					value={String(overview?.pinecone.totalRecordCount ?? 0)}
 					status={overview?.pinecone.status ?? "disabled"}
 					detail={overview?.pinecone.message ?? "Pinecone status"}
+					actions={
+						<>
+							<a
+								href={SERVICE_GUIDES[0].docsUrl}
+								target="_blank"
+								rel="noreferrer"
+								className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700"
+							>
+								Open docs
+							</a>
+							<a
+								href={SERVICE_GUIDES[0].consoleUrl}
+								target="_blank"
+								rel="noreferrer"
+								className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+							>
+								Open console
+							</a>
+						</>
+					}
 				/>
 				<MetricCard
 					title="OpenRouter"
 					value={overview?.openrouter.model ?? "-"}
 					status={overview?.openrouter.status ?? "disabled"}
 					detail={overview?.openrouter.message ?? "OpenRouter status"}
+					actions={
+						<>
+							<a
+								href={SERVICE_GUIDES[1].docsUrl}
+								target="_blank"
+								rel="noreferrer"
+								className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700"
+							>
+								Open docs
+							</a>
+							<a
+								href={SERVICE_GUIDES[1].consoleUrl}
+								target="_blank"
+								rel="noreferrer"
+								className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+							>
+								Open console
+							</a>
+						</>
+					}
 				/>
 				<MetricCard
 					title="Uploads"
@@ -408,158 +462,6 @@ export function Admin() {
 			</div>
 
 			<section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-				<div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-					<div>
-						<p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-							Service Setup
-						</p>
-						<h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
-							Third-party integrations
-						</h2>
-						<p className="mt-1 text-sm text-slate-600">
-							Use these official guides when Pinecone or OpenRouter is missing,
-							disabled, or returning errors.
-						</p>
-					</div>
-				</div>
-
-				<div className="mt-5 grid gap-4 md:grid-cols-2">
-					{SERVICE_GUIDES.map((service) => {
-						const status =
-							service.name === "Pinecone"
-								? overview?.pinecone.status ?? "disabled"
-								: overview?.openrouter.status ?? "disabled";
-						const configured =
-							service.name === "Pinecone"
-								? overview?.pinecone.configured ?? false
-								: overview?.openrouter.configured ?? false;
-						const message =
-							service.name === "Pinecone"
-								? overview?.pinecone.message
-								: overview?.openrouter.message;
-
-						return (
-							<div
-								key={service.name}
-								className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(248,250,252,0.9),_rgba(255,255,255,1))] p-5"
-							>
-								<div className="flex items-center justify-between gap-3">
-									<h3 className="text-lg font-semibold text-slate-900">
-										{service.name}
-									</h3>
-									{statusBadge(status)}
-								</div>
-								<p className="mt-3 text-sm leading-6 text-slate-600">
-									{service.description}
-								</p>
-								<p className="mt-3 text-xs uppercase tracking-wide text-slate-500">
-									{configured ? "Configured" : "Not configured"}
-								</p>
-								<p className="mt-1 text-sm text-slate-700">
-									{message || "No provider status available yet."}
-								</p>
-								<div className="mt-4 flex flex-wrap gap-3">
-									<a
-										href={service.docsUrl}
-										target="_blank"
-										rel="noreferrer"
-										className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-									>
-										Open docs
-									</a>
-									<a
-										href={service.consoleUrl}
-										target="_blank"
-										rel="noreferrer"
-										className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-									>
-										Open console
-									</a>
-								</div>
-							</div>
-						);
-					})}
-				</div>
-			</section>
-
-			<div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-				<section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-					<div className="flex items-center justify-between gap-3">
-						<div>
-							<h2 className="text-xl font-semibold tracking-tight text-slate-900">
-								Recent issues
-							</h2>
-							<p className="mt-1 text-sm text-slate-600">
-								Latest failed documents and processing jobs.
-							</p>
-						</div>
-					</div>
-					<div className="mt-6 grid gap-6 md:grid-cols-2">
-						<div>
-							<h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-								Failed documents
-							</h3>
-							<ul className="mt-3 space-y-3">
-								{overview?.postgres.recentFailedDocuments.length ? (
-									overview.postgres.recentFailedDocuments.map((doc) => (
-										<li
-											key={doc.id}
-											className="rounded-2xl border border-rose-100 bg-rose-50/60 p-3"
-										>
-											<p className="text-sm font-semibold text-slate-900">
-												{doc.filename}
-											</p>
-											<p className="mt-1 text-xs text-slate-600">
-												{doc.errorMessage || "No error message"}
-											</p>
-											<p className="mt-2 text-xs text-slate-500">
-												Updated {formatDate(doc.updatedAt)}
-											</p>
-										</li>
-									))
-								) : (
-									<li className="text-sm text-slate-500">
-										No failed documents.
-									</li>
-								)}
-							</ul>
-						</div>
-
-						<div>
-							<h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-								Failed jobs
-							</h3>
-							<ul className="mt-3 space-y-3">
-								{overview?.postgres.recentFailedJobs.length ? (
-									overview.postgres.recentFailedJobs.map((job) => (
-										<li
-											key={job.id}
-											className="rounded-2xl border border-amber-100 bg-amber-50/70 p-3"
-										>
-											<div className="flex items-center justify-between gap-3">
-												<p className="text-sm font-semibold text-slate-900">
-													{job.jobType}
-												</p>
-												{statusBadge("failed")}
-											</div>
-											<p className="mt-1 text-xs text-slate-600">
-												{job.errorMessage || "No error message"}
-											</p>
-											<p className="mt-2 text-xs text-slate-500">
-												Document {job.documentId.slice(0, 8)} •{" "}
-												{formatDate(job.completedAt || job.createdAt)}
-											</p>
-										</li>
-									))
-								) : (
-									<li className="text-sm text-slate-500">No failed jobs.</li>
-								)}
-							</ul>
-						</div>
-					</div>
-				</section>
-
-				<section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
 					<h2 className="text-xl font-semibold tracking-tight text-slate-900">
 						Queue controls
 					</h2>
@@ -659,7 +561,179 @@ export function Admin() {
 						</div>
 					</div>
 				</section>
-			</div>
+
+			<section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+				<div className="flex items-center justify-between gap-3">
+					<div>
+						<h2 className="text-xl font-semibold tracking-tight text-slate-900">
+							Failure review
+						</h2>
+						<p className="mt-1 text-sm text-slate-600">
+							Live queue state and historical audit records are related, but they are not the same source of truth.
+						</p>
+					</div>
+				</div>
+				<div className="mt-6 flex flex-wrap gap-3">
+					<div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+						Live queue {liveFailedJobs.length}
+					</div>
+					<div className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+						Failed docs {historicalFailedDocuments.length}
+					</div>
+					<div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-700">
+						Audit jobs {historicalFailedJobs.length}
+					</div>
+				</div>
+				<div className="mt-6 grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
+					<div className="rounded-3xl border border-amber-200 bg-[linear-gradient(180deg,_rgba(254,243,199,0.55),_rgba(255,255,255,1))] p-5">
+						<div className="flex items-center justify-between gap-3">
+							<div>
+								<h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-800">
+									Live queue failures
+								</h3>
+								<p className="mt-1 text-sm text-slate-600">
+									Clearing the failed queue removes these current BullMQ entries.
+								</p>
+							</div>
+							<span className="rounded-full bg-white/80 px-3 py-1 text-sm font-semibold text-amber-800">
+								{liveFailedJobs.length}
+							</span>
+						</div>
+						{liveFailedJobs.length ? (
+							<ul className="mt-4 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
+								{liveFailedJobs.map((job) => (
+									<li
+										key={job.id}
+										className="rounded-2xl border border-amber-200 bg-white/90 p-4 shadow-sm"
+									>
+										<div className="flex items-start justify-between gap-3">
+											<div>
+												<p className="text-base font-semibold text-slate-900">
+													{job.name}
+												</p>
+												<p className="mt-1 text-xs uppercase tracking-[0.18em] text-amber-700">
+													Live queue failure
+												</p>
+											</div>
+											<span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+												{job.attemptsMade} attempts
+											</span>
+										</div>
+										<p
+											className="mt-3 text-sm leading-6 text-slate-700"
+											title={job.failedReason || undefined}
+										>
+											{truncateText(job.failedReason, 180)}
+										</p>
+										<p className="mt-3 text-xs text-slate-500">
+											{job.documentId ? `Document ${job.documentId.slice(0, 8)} • ` : ""}
+											{formatDate(job.finishedAt ?? null)}
+										</p>
+									</li>
+								))}
+							</ul>
+						) : (
+							<div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-sm text-emerald-800">
+								No live failed queue jobs.
+							</div>
+						)}
+					</div>
+
+					<div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-5">
+						<div className="flex items-center justify-between gap-3">
+							<div>
+								<h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+									Historical audit trail
+								</h3>
+								<p className="mt-1 text-sm text-slate-600">
+									These records remain after queue cleanup until the underlying document or job history changes.
+								</p>
+							</div>
+							<span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-700">
+								{historicalFailedDocuments.length + historicalFailedJobs.length}
+							</span>
+						</div>
+						<div className="mt-4 grid gap-4 md:grid-cols-2">
+							<div className="rounded-2xl border border-slate-200 bg-white p-4">
+								<div className="flex items-center justify-between gap-3">
+									<h4 className="text-sm font-semibold text-slate-900">
+										Failed documents
+									</h4>
+									<span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+										{historicalFailedDocuments.length}
+									</span>
+								</div>
+								<ul className="mt-4 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
+									{historicalFailedDocuments.length ? (
+										historicalFailedDocuments.map((doc) => (
+											<li
+												key={doc.id}
+												className="rounded-2xl border border-rose-100 bg-rose-50/60 p-3"
+											>
+												<p className="text-sm font-semibold text-slate-900">
+													{doc.filename}
+												</p>
+												<p
+													className="mt-1 text-xs leading-5 text-slate-600"
+													title={doc.errorMessage || undefined}
+												>
+													{truncateText(doc.errorMessage, 140)}
+												</p>
+												<p className="mt-2 text-xs text-slate-500">
+													Updated {formatDate(doc.updatedAt)}
+												</p>
+											</li>
+										))
+									) : (
+										<li className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+											No failed documents.
+										</li>
+									)}
+								</ul>
+							</div>
+
+							<div className="rounded-2xl border border-slate-200 bg-white p-4">
+								<div className="flex items-center justify-between gap-3">
+									<h4 className="text-sm font-semibold text-slate-900">
+										Failed jobs
+									</h4>
+									<span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+										{historicalFailedJobs.length}
+									</span>
+								</div>
+								<ul className="mt-4 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
+									{historicalFailedJobs.length ? (
+										historicalFailedJobs.map((job) => (
+											<li
+												key={job.id}
+												className="rounded-2xl border border-amber-100 bg-amber-50/70 p-3"
+											>
+												<p className="text-sm font-semibold text-slate-900">
+													{job.jobType}
+												</p>
+												<p
+													className="mt-1 text-xs leading-5 text-slate-600"
+													title={job.errorMessage || undefined}
+												>
+													{truncateText(job.errorMessage, 140)}
+												</p>
+												<p className="mt-2 text-xs text-slate-500">
+													Document {job.documentId.slice(0, 8)} •{" "}
+													{formatDate(job.completedAt || job.createdAt)}
+												</p>
+											</li>
+										))
+									) : (
+										<li className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+											No failed jobs.
+										</li>
+									)}
+								</ul>
+							</div>
+						</div>
+					</div>
+				</div>
+			</section>
 
 			<section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
 				<div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">

@@ -96,6 +96,18 @@ const baseOverview = {
 				timestamp: 100,
 			},
 		],
+		failedJobs: [
+			{
+				id: "queue-job-failed-1",
+				name: "classify",
+				state: "failed",
+				attemptsMade: 2,
+				documentId: "doc-failed",
+				timestamp: 200,
+				failedReason: "Classifier timed out",
+				finishedAt: "2026-03-09T12:01:00.000Z",
+			},
+		],
 		worker: {
 			status: "online" as const,
 			lastHeartbeatAt: "2026-03-09T12:00:00.000Z",
@@ -196,7 +208,13 @@ describe("Admin", () => {
 		renderAdmin();
 
 		expect(await screen.findByText("failed.pdf")).toBeInTheDocument();
-		expect(screen.getByText("Recent issues")).toBeInTheDocument();
+		expect(screen.getByText("Failure review")).toBeInTheDocument();
+		expect(screen.getByText("Live queue failures")).toBeInTheDocument();
+		expect(screen.getByText("Historical audit trail")).toBeInTheDocument();
+		expect(screen.getByText("Classifier timed out")).toBeInTheDocument();
+		expect(
+			screen.getByText("active 1, failed 1, worker online"),
+		).toBeInTheDocument();
 		expect(screen.getAllByText("Pinecone reachable").length).toBeGreaterThan(0);
 		expect(screen.getAllByText("healthy").length).toBeGreaterThan(0);
 		expect(screen.getByText("invoice.pdf")).toBeInTheDocument();

@@ -124,6 +124,7 @@ describe("adminRouter", () => {
 					paused: 0,
 				},
 				recentJobs: [],
+				failedJobs: [],
 				worker: {
 					status: "online",
 					lastHeartbeatAt: "2026-03-09T12:00:00.000Z",

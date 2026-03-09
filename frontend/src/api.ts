@@ -205,6 +205,17 @@ export interface AdminServiceStatus {
 	message?: string;
 }
 
+export interface AdminQueueJobSummary {
+	id: string;
+	name: string;
+	state: string;
+	attemptsMade: number;
+	documentId: string | null;
+	timestamp: number;
+	failedReason?: string | null;
+	finishedAt?: string | null;
+}
+
 export interface AdminQueueStatus {
 	paused: boolean;
 	maintenanceMode: boolean;
@@ -212,14 +223,8 @@ export interface AdminQueueStatus {
 		"waiting" | "active" | "delayed" | "completed" | "failed" | "paused",
 		number
 	>;
-	recentJobs: Array<{
-		id: string;
-		name: string;
-		state: string;
-		attemptsMade: number;
-		documentId: string | null;
-		timestamp: number;
-	}>;
+	recentJobs: AdminQueueJobSummary[];
+	failedJobs: AdminQueueJobSummary[];
 	worker: {
 		status: "online" | "stale" | "offline";
 		lastHeartbeatAt: string | null;

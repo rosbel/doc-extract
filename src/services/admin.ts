@@ -189,7 +189,7 @@ async function getPineconeStatus(): Promise<AdminOverview["pinecone"]> {
 }
 
 async function getQueueStatus(): Promise<AdminQueueStatus> {
-	const [counts, paused, recentJobs, heartbeat, maintenanceMode] =
+	const [counts, paused, recentJobs, failedJobs, heartbeat, maintenanceMode] =
 		await Promise.all([
 			documentQueue.getJobCounts(
 				"waiting",
@@ -206,6 +206,7 @@ async function getQueueStatus(): Promise<AdminQueueStatus> {
 				RECENT_LIMIT - 1,
 				false,
 			),
+			documentQueue.getJobs(["failed"], 0, RECENT_LIMIT - 1, false),
 			readWorkerHeartbeat(),
 			isMaintenanceModeEnabled(),
 		]);
@@ -219,6 +220,23 @@ async function getQueueStatus(): Promise<AdminQueueStatus> {
 			documentId:
 				typeof job.data?.documentId === "string" ? job.data.documentId : null,
 			timestamp: job.timestamp,
+		})),
+	);
+	const failedJobStates = await Promise.all(
+		failedJobs.map(async (job) => ({
+			id: String(job.id),
+			name: job.name,
+			state: await job.getState(),
+			attemptsMade: job.attemptsMade,
+			documentId:
+				typeof job.data?.documentId === "string" ? job.data.documentId : null,
+			timestamp: job.timestamp,
+			failedReason:
+				typeof job.failedReason === "string" ? job.failedReason : null,
+			finishedAt:
+				typeof job.finishedOn === "number"
+					? new Date(job.finishedOn).toISOString()
+					: null,
 		})),
 	);
 
@@ -244,6 +262,7 @@ async function getQueueStatus(): Promise<AdminQueueStatus> {
 			paused: counts.paused ?? 0,
 		},
 		recentJobs: recentJobStates,
+		failedJobs: failedJobStates,
 		worker: {
 			status: workerStatus,
 			lastHeartbeatAt,

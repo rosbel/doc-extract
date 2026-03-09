@@ -27,6 +27,7 @@ export type {
 	AdminActionResult,
 	AdminDocumentRow,
 	AdminOverview,
+	AdminQueueJobSummary,
 	AdminQueueStatus,
 	AdminServiceStatus,
 } from "./admin.js";
