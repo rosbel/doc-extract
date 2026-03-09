@@ -25,6 +25,19 @@ export interface Schema {
 	updatedAt: string;
 }
 
+export interface SchemaRevision {
+	id: string;
+	schemaId: string;
+	version: number;
+	name: string;
+	description: string;
+	jsonSchema: Record<string, unknown>;
+	classificationHints: string[];
+	source: "manual" | "ai" | "restore";
+	summary: string | null;
+	createdAt: string;
+}
+
 export interface Document {
 	id: string;
 	filename: string;
@@ -35,6 +48,8 @@ export interface Document {
 	storagePath: string;
 	status: string;
 	schemaId: string | null;
+	schemaVersion: number | null;
+	schemaRevisionId: string | null;
 	extractedData: Record<string, unknown> | null;
 	extractionConfidence: number | null;
 	errorMessage: string | null;
@@ -70,6 +85,7 @@ export interface SemanticSearchResult {
 
 export interface DocumentDetail extends Document {
 	schema: Schema | null;
+	schemaRevision: SchemaRevision | null;
 	jobs: Array<{
 		id: string;
 		jobType: string;
@@ -92,9 +108,24 @@ export interface SchemaRecommendation {
 	matchingDocuments: string[];
 }
 
-export interface RecommendationResponse {
-	recommendations: SchemaRecommendation[];
+export interface SchemaAssistDiffEntry {
+	field: "name" | "description" | "classificationHints" | "jsonSchema";
+	label: string;
+	changed: boolean;
+	before: unknown;
+	after: unknown;
+}
+
+export interface SchemaAssistCreateResponse {
 	analysis: string;
+	proposals: SchemaRecommendation[];
+	warnings?: Array<{ filename: string; warning: string }>;
+}
+
+export interface SchemaAssistEditResponse {
+	analysis: string;
+	proposal: SchemaRecommendation;
+	diff: SchemaAssistDiffEntry[];
 	warnings?: Array<{ filename: string; warning: string }>;
 }
 
@@ -126,11 +157,57 @@ export const api = {
 			description: string;
 			jsonSchema: Record<string, unknown>;
 			classificationHints?: string[];
+			revision?: {
+				source?: "manual" | "ai" | "restore";
+				summary?: string;
+			};
 		}) => request<Schema>("/schemas", { method: "POST", body: JSON.stringify(data) }),
-		update: (id: string, data: Partial<Schema>) =>
+		update: (
+			id: string,
+			data: Partial<Schema> & {
+				revision?: {
+					source?: "manual" | "ai" | "restore";
+					summary?: string;
+				};
+			},
+		) =>
 			request<Schema>(`/schemas/${id}`, { method: "PUT", body: JSON.stringify(data) }),
 		delete: (id: string) =>
 			request<Schema>(`/schemas/${id}`, { method: "DELETE" }),
+		revisions: (id: string) =>
+			request<SchemaRevision[]>(`/schemas/${id}/revisions`),
+		restoreRevision: (id: string, revisionId: string) =>
+			request<Schema>(`/schemas/${id}/revisions/${revisionId}/restore`, {
+				method: "POST",
+			}),
+		assist: async (data: {
+			mode: "create" | "edit";
+			prompt?: string;
+			schemaId?: string;
+			files?: File[];
+		}): Promise<SchemaAssistCreateResponse | SchemaAssistEditResponse> => {
+			const form = new FormData();
+			form.append("mode", data.mode);
+			if (data.prompt?.trim()) {
+				form.append("prompt", data.prompt.trim());
+			}
+			if (data.schemaId) {
+				form.append("schemaId", data.schemaId);
+			}
+			for (const file of data.files ?? []) {
+				form.append("files", file);
+			}
+
+			const res = await fetch(`${BASE}/schemas/assist`, {
+				method: "POST",
+				body: form,
+			});
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				throw new Error(body.error || `Schema assist failed: ${res.status}`);
+			}
+			return res.json();
+		},
 	},
 	documents: {
 		list: (params?: Record<string, string>) => {
@@ -179,23 +256,6 @@ export const api = {
 				eventSource.close();
 			};
 			return eventSource;
-		},
-	},
-	recommendations: {
-		analyze: async (files: File[]): Promise<RecommendationResponse> => {
-			const form = new FormData();
-			for (const f of files) {
-				form.append("files", f);
-			}
-			const res = await fetch(`${BASE}/recommendations`, {
-				method: "POST",
-				body: form,
-			});
-			if (!res.ok) {
-				const body = await res.json().catch(() => ({}));
-				throw new Error(body.error || `Analysis failed: ${res.status}`);
-			}
-			return res.json();
 		},
 	},
 	search: ({ query, mode, schemaId, limit = 10 }: SearchRequest) =>

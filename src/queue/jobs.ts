@@ -8,7 +8,7 @@ export interface ClassifyJobData {
 export interface ExtractJobData {
 	type: "extract";
 	documentId: string;
-	schemaId: string;
+	schemaRevisionId: string;
 }
 
 export type JobData = ClassifyJobData | ExtractJobData;
@@ -34,8 +34,11 @@ export async function enqueueClassification(documentId: string) {
 	);
 }
 
-export async function enqueueExtraction(documentId: string, schemaId: string) {
-	const jobId = `extract-${documentId}-${schemaId}`;
+export async function enqueueExtraction(
+	documentId: string,
+	schemaRevisionId: string,
+) {
+	const jobId = `extract-${documentId}-${schemaRevisionId}`;
 	// Remove stale job from previous run (failed/completed) to avoid BullMQ dedup
 	try {
 		const existing = await documentQueue.getJob(jobId);
@@ -50,7 +53,7 @@ export async function enqueueExtraction(documentId: string, schemaId: string) {
 	}
 	await documentQueue.add(
 		"extract",
-		{ type: "extract", documentId, schemaId },
+		{ type: "extract", documentId, schemaRevisionId },
 		{ jobId },
 	);
 }

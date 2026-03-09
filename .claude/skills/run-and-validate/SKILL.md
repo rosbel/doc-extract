@@ -135,33 +135,24 @@ The proxy check (`/api/schemas` via `:5173`) is critical — it confirms the Vit
 
 ### Phase 6: Visual QA (Browser Automation)
 
-Use `npx agent-browser` for all browser commands. Never use the bare binary.
+Use the `playwright-interactive` skill for all browser automation. Invoke the skill before starting this phase to load the full workflow, then follow its bootstrap, session setup, and QA checklists.
 
-**Open browser:**
-```bash
-npx agent-browser open http://localhost:5173
-```
+**Project-specific config:**
+- Target URL: `http://127.0.0.1:5173`
+- Viewport: `{ width: 1600, height: 900 }`
 
-**Take initial screenshot:**
-```bash
-npx agent-browser screenshot /tmp/docextract-home.png
-```
-
-**Navigate all pages** using snapshot-driven interaction:
-1. Take a snapshot: `npx agent-browser snapshot`
-2. Find the nav button ref from the snapshot output (refs are dynamic — never hardcode them)
-3. Click using the ref: `npx agent-browser click <ref>`
-4. Screenshot each page:
-   - Documents page: `npx agent-browser screenshot /tmp/docextract-documents.png`
-   - Schemas page: `npx agent-browser screenshot /tmp/docextract-schemas.png`
-   - Recommend page: `npx agent-browser screenshot /tmp/docextract-recommend.png`
-
-**Nav buttons in the UI** (from `frontend/src/App.tsx`):
+**Pages to navigate and screenshot** (nav buttons from `frontend/src/App.tsx`):
 - "Documents" — navigates to documents list
 - "Schemas" — navigates to schemas list
 - "Recommend" — navigates to schema recommendations
 
-Report what each page shows (empty state, data, errors).
+**What to verify on each page:**
+- Does the page render without errors (no React error overlay)?
+- Is the correct content shown (empty state, data list, or error)?
+- Are interactive elements (buttons, forms, links) visible and properly laid out?
+- Are there any network errors (failed API calls, 4xx/5xx responses, connection refused)?
+
+Use Playwright's network monitoring to check for failed requests during navigation. Report what each page shows (empty state, data, errors) and any network failures observed.
 
 ---
 
@@ -191,10 +182,7 @@ Poll every 3s until `status` is `completed` or `failed` (timeout after 60s).
 
 ### Phase 8: Cleanup
 
-When done with validation:
-```bash
-npx agent-browser close
-```
+When done with validation, close the Playwright session using the cleanup procedure from the `playwright-interactive` skill (close browser, context, and page handles).
 
 Do NOT kill backend/worker/frontend services — leave them running for the user.
 
@@ -218,9 +206,9 @@ docker compose down
 | Port 5173 in use but returns error | Stale Vite process | `lsof -ti :5173 \| xargs kill -9` then restart |
 | `/api/schemas` via `:5173` returns 404/502 | Proxy misconfiguration or backend not ready | Check backend is healthy first, then check `frontend/vite.config.ts` |
 | Worker not processing jobs | Redis connection issue | Verify Redis is running: `docker compose exec redis redis-cli ping` |
-| `npx agent-browser` not found | Not installed | `npm install -g agent-browser` or use `npx` (which auto-downloads) |
+| Playwright not found | Not installed | Run `npm install playwright && npx playwright install chromium` in the project |
 | Browser opens but page is blank | Frontend not built/serving | Check `lsof -i :5173` and Vite console output |
-| Screenshots show error overlay | Runtime error in React | Read the error text from screenshot, check browser console via `npx agent-browser execute "console.log(document.title)"` |
+| Screenshots show error overlay | Runtime error in React | Read the error text from screenshot, check browser console via `page.evaluate(() => document.title)` |
 | `EADDRINUSE` on startup | Port already bound | Kill the occupying process with `lsof -ti :<port> \| xargs kill -9` |
 
 ## Key Files

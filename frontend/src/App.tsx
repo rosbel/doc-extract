@@ -6,18 +6,13 @@ const Documents = lazy(() =>
 const Schemas = lazy(() =>
 	import("./pages/Schemas").then((m) => ({ default: m.Schemas })),
 );
-const Recommendations = lazy(() =>
-	import("./pages/Recommendations").then((m) => ({
-		default: m.Recommendations,
-	})),
-);
 const DocumentDetail = lazy(() =>
 	import("./pages/DocumentDetail").then((m) => ({
 		default: m.DocumentDetail,
 	})),
 );
 
-type Page = "documents" | "schemas" | "recommendations" | "document-detail";
+type Page = "documents" | "schemas" | "document-detail";
 
 export default function App() {
 	const [page, setPage] = useState<Page>("documents");
@@ -47,12 +42,6 @@ export default function App() {
 					>
 						Schemas
 					</button>
-					<button
-						onClick={() => setPage("recommendations")}
-						className={`text-sm font-medium ${page === "recommendations" ? "text-blue-600" : "text-gray-600 hover:text-gray-900"}`}
-					>
-						Recommend
-					</button>
 				</div>
 			</nav>
 
@@ -62,7 +51,6 @@ export default function App() {
 						<Documents onSelectDocument={onSelectDocument} />
 					)}
 					{page === "schemas" && <Schemas />}
-					{page === "recommendations" && <Recommendations />}
 					{page === "document-detail" && selectedDocId && (
 						<DocumentDetail
 							documentId={selectedDocId}

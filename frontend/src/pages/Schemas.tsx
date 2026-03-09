@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Schema } from "../api";
-import { SchemaEditor } from "../components/SchemaEditor";
+import { SchemaWorkbench } from "../components/SchemaWorkbench";
 
 export function Schemas() {
 	const [schemas, setSchemas] = useState<Schema[]>([]);
 	const [editing, setEditing] = useState<Schema | null>(null);
-	const [creating, setCreating] = useState(false);
+	const [creatingMode, setCreatingMode] = useState<"manual" | "ai" | null>(null);
 	const [loading, setLoading] = useState(true);
 
 	const load = useCallback(async () => {
@@ -31,19 +31,20 @@ export function Schemas() {
 		}
 	}, [load]);
 
-	if (creating || editing) {
+	if (creatingMode || editing) {
 		return (
 			<div className="space-y-4">
 				<h1 className="text-2xl font-bold">{editing ? "Edit Schema" : "Create Schema"}</h1>
-				<SchemaEditor
+				<SchemaWorkbench
 					schema={editing}
+					initialAssistantMode={creatingMode === "ai"}
 					onSaved={() => {
-						setCreating(false);
+						setCreatingMode(null);
 						setEditing(null);
 						load();
 					}}
 					onCancel={() => {
-						setCreating(false);
+						setCreatingMode(null);
 						setEditing(null);
 					}}
 				/>
@@ -55,26 +56,58 @@ export function Schemas() {
 		<div className="space-y-6">
 			<div className="flex justify-between items-center">
 				<h1 className="text-2xl font-bold">Extraction Schemas</h1>
-				<button
-					onClick={() => setCreating(true)}
-					className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-				>
-					New Schema
-				</button>
+				<div className="flex gap-3">
+					<button
+						onClick={() => setCreatingMode("manual")}
+						className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+					>
+						New Schema
+					</button>
+					<button
+						onClick={() => setCreatingMode("ai")}
+						className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+					>
+						Generate With AI
+					</button>
+				</div>
 			</div>
 
 			{loading ? (
 				<p className="text-gray-500">Loading...</p>
 			) : schemas.length === 0 ? (
-				<p className="text-gray-500">No schemas yet. Create one to get started.</p>
+				<div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+					<p className="text-slate-600">
+						No schemas yet. Start manually or generate a draft with AI.
+					</p>
+					<div className="mt-4 flex justify-center gap-3">
+						<button
+							onClick={() => setCreatingMode("manual")}
+							className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+						>
+							New Schema
+						</button>
+						<button
+							onClick={() => setCreatingMode("ai")}
+							className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+						>
+							Generate With AI
+						</button>
+					</div>
+				</div>
 			) : (
 				<div className="grid gap-4">
 					{schemas.map((schema) => (
-						<div key={schema.id} className="bg-white rounded-lg border p-4 shadow-sm">
+						<div
+							key={schema.id}
+							className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+						>
 							<div className="flex justify-between items-start">
 								<div>
 									<h3 className="font-semibold text-lg">{schema.name}</h3>
 									<p className="text-sm text-gray-600 mt-1">{schema.description}</p>
+									<p className="mt-2 text-xs uppercase tracking-wide text-slate-500">
+										Version {schema.version}
+									</p>
 									{schema.classificationHints.length > 0 && (
 										<div className="flex gap-1 mt-2">
 											{schema.classificationHints.map((hint) => (
@@ -105,7 +138,7 @@ export function Schemas() {
 							</div>
 							<details className="mt-3">
 								<summary className="text-sm text-gray-500 cursor-pointer">JSON Schema</summary>
-								<pre className="mt-2 text-xs bg-gray-50 p-3 rounded overflow-auto max-h-48">
+								<pre className="mt-2 max-h-48 overflow-auto rounded bg-gray-50 p-3 text-xs">
 									{JSON.stringify(schema.jsonSchema, null, 2)}
 								</pre>
 							</details>

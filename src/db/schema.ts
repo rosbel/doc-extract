@@ -11,6 +11,11 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const schemaStatusEnum = pgEnum("schema_status", ["active", "archived"]);
+export const schemaRevisionSourceEnum = pgEnum("schema_revision_source", [
+	"manual",
+	"ai",
+	"restore",
+]);
 
 export const documentStatusEnum = pgEnum("document_status", [
 	"pending",
@@ -45,6 +50,24 @@ export const extractionSchemas = pgTable("extraction_schemas", {
 	updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const schemaRevisions = pgTable("schema_revisions", {
+	id: uuid("id").defaultRandom().primaryKey(),
+	schemaId: uuid("schema_id")
+		.references(() => extractionSchemas.id, { onDelete: "cascade" })
+		.notNull(),
+	version: integer("version").notNull(),
+	name: text("name").notNull(),
+	description: text("description").notNull(),
+	jsonSchema: jsonb("json_schema").notNull(),
+	classificationHints: text("classification_hints")
+		.array()
+		.notNull()
+		.default([]),
+	source: schemaRevisionSourceEnum("source").notNull().default("manual"),
+	summary: text("summary"),
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const documents = pgTable(
 	"documents",
 	{
@@ -57,6 +80,10 @@ export const documents = pgTable(
 		storagePath: text("storage_path").notNull(),
 		status: documentStatusEnum("status").notNull().default("pending"),
 		schemaId: uuid("schema_id").references(() => extractionSchemas.id),
+		schemaVersion: integer("schema_version"),
+		schemaRevisionId: uuid("schema_revision_id").references(
+			() => schemaRevisions.id,
+		),
 		extractedData: jsonb("extracted_data"),
 		extractionConfidence: real("extraction_confidence"),
 		errorMessage: text("error_message"),

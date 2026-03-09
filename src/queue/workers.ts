@@ -1,16 +1,22 @@
 import { Worker } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { documents, extractionSchemas, processingJobs } from "../db/schema.js";
+import {
+	documents,
+	extractionSchemas,
+	processingJobs,
+	schemaRevisions,
+} from "../db/schema.js";
 import { logger } from "../lib/logger.js";
 import { classifyDocument } from "../services/classifier.js";
 import { extractDocument } from "../services/extractor.js";
+import { getLatestSchemaRevision } from "../services/schema-lifecycle.js";
 import { indexDocument } from "../services/vector-store.js";
 import { redisConnectionOpts } from "./index.js";
 import type { JobData } from "./jobs.js";
 import { enqueueExtraction } from "./jobs.js";
 
-async function handleClassification(documentId: string) {
+export async function handleClassification(documentId: string) {
 	// Update status
 	await db
 		.update(documents)
@@ -41,12 +47,20 @@ async function handleClassification(documentId: string) {
 		if (schemas.length === 0) throw new Error("No active schemas available");
 
 		const result = await classifyDocument(doc.rawText, schemas);
+		const revision = await getLatestSchemaRevision(db, result.schemaId);
+		if (!revision) {
+			throw new Error(
+				`No revision found for classified schema "${result.schemaId}"`,
+			);
+		}
 
 		// Update document with classification result
 		await db
 			.update(documents)
 			.set({
 				schemaId: result.schemaId,
+				schemaVersion: revision.version,
+				schemaRevisionId: revision.id,
 				updatedAt: new Date(),
 			})
 			.where(eq(documents.id, documentId));
@@ -65,10 +79,11 @@ async function handleClassification(documentId: string) {
 		if (!result.schemaId) {
 			throw new Error("Classification succeeded but returned no schemaId");
 		}
-		await enqueueExtraction(documentId, result.schemaId);
+		await enqueueExtraction(documentId, revision.id);
 		logger.info("Classification complete, extraction enqueued", {
 			documentId,
 			schemaId: result.schemaId,
+			schemaRevisionId: revision.id,
 		});
 	} catch (err) {
 		const errorMessage =
@@ -89,7 +104,10 @@ async function handleClassification(documentId: string) {
 	}
 }
 
-async function handleExtraction(documentId: string, schemaId: string) {
+export async function handleExtraction(
+	documentId: string,
+	schemaRevisionId: string,
+) {
 	// Update status
 	await db
 		.update(documents)
@@ -112,15 +130,15 @@ async function handleExtraction(documentId: string, schemaId: string) {
 		});
 		if (!doc?.rawText) throw new Error("Document not found or has no text");
 
-		const schema = await db.query.extractionSchemas.findFirst({
-			where: eq(extractionSchemas.id, schemaId),
+		const revision = await db.query.schemaRevisions.findFirst({
+			where: eq(schemaRevisions.id, schemaRevisionId),
 		});
-		if (!schema) throw new Error("Schema not found");
+		if (!revision) throw new Error("Schema revision not found");
 
 		const result = await extractDocument(
 			doc.rawText,
-			schema.jsonSchema as Record<string, unknown>,
-			schema.name,
+			revision.jsonSchema as Record<string, unknown>,
+			revision.name,
 		);
 
 		// Update document with extraction results
@@ -149,7 +167,7 @@ async function handleExtraction(documentId: string, schemaId: string) {
 				doc.id,
 				doc.filename,
 				result.extractedData,
-				schema.id,
+				revision.schemaId,
 			);
 		} catch (vecErr) {
 			logger.warn("Vector indexing failed (non-fatal)", {
@@ -194,7 +212,10 @@ export function createWorker() {
 			if (job.data.type === "classify") {
 				await handleClassification(job.data.documentId);
 			} else if (job.data.type === "extract") {
-				await handleExtraction(job.data.documentId, job.data.schemaId);
+				await handleExtraction(
+					job.data.documentId,
+					job.data.schemaRevisionId,
+				);
 			}
 		},
 		{

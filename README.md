@@ -58,7 +58,7 @@ pnpm dev:all
 
 ## Usage
 
-1. **Create a schema** — Define what data to extract (e.g., "Invoice" with fields: vendor, amount, date, line_items)
+1. **Create a schema** — Define it manually or use AI assist from prompts and sample documents
 2. **Upload a document** — PDF, DOCX, TXT, CSV, JSON, or Markdown
 3. **Watch processing** — Status transitions: pending → classifying → extracting → completed
 4. **View results** — Extracted structured data with confidence scores
@@ -70,8 +70,11 @@ pnpm dev:all
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/schemas` | Create extraction schema |
+| POST | `/api/schemas/assist` | Generate or refine schema drafts with AI |
 | GET | `/api/schemas` | List active schemas |
 | GET | `/api/schemas/:id` | Get schema detail |
+| GET | `/api/schemas/:id/revisions` | List saved schema revisions |
+| POST | `/api/schemas/:id/revisions/:revisionId/restore` | Restore a saved revision as the new current version |
 | PUT | `/api/schemas/:id` | Update schema |
 | DELETE | `/api/schemas/:id` | Archive schema |
 

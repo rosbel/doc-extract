@@ -44,6 +44,8 @@ const baseDocuments = [
 		storagePath: "/tmp/invoice.pdf",
 		status: "completed",
 		schemaId: "schema-1",
+		schemaVersion: 1,
+		schemaRevisionId: "revision-1",
 		extractedData: { vendor: "Acme" },
 		extractionConfidence: 0.95,
 		errorMessage: null,

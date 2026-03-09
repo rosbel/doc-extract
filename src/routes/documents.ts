@@ -167,7 +167,7 @@ documentsRouter.get("/:id", async (req, res, next) => {
 	try {
 		const doc = await db.query.documents.findFirst({
 			where: eq(documents.id, req.params.id),
-			with: { schema: true, jobs: true },
+			with: { schema: true, schemaRevision: true, jobs: true },
 		});
 		if (!doc) {
 			res.status(404).json({ error: "Document not found" });
@@ -291,6 +291,8 @@ documentsRouter.post("/:id/reprocess", async (req, res, next) => {
 				extractionConfidence: null,
 				errorMessage: null,
 				schemaId: null,
+				schemaVersion: null,
+				schemaRevisionId: null,
 				updatedAt: new Date(),
 			})
 			.where(eq(documents.id, req.params.id))
