@@ -6,6 +6,7 @@ import {
 	useState,
 	type FormEvent,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import {
 	api,
 	type Document,
@@ -21,10 +22,6 @@ import { StatusBadge } from "../components/StatusBadge";
 const PROCESSING_STATUSES = ["pending", "classifying", "extracting"];
 const SEARCH_LIMIT = 10;
 
-interface Props {
-	onSelectDocument: (id: string) => void;
-}
-
 function formatConfidence(value: number | null) {
 	return value != null ? `${(value * 100).toFixed(0)}%` : "-";
 }
@@ -35,7 +32,8 @@ function formatSchemaLabel(schemaId: string | null, schemas: Schema[]) {
 	return schema ? `${schema.name} (${schemaId.slice(0, 8)})` : schemaId;
 }
 
-export function Documents({ onSelectDocument }: Props) {
+export function Documents() {
+	const navigate = useNavigate();
 	const [docs, setDocs] = useState<Document[]>([]);
 	const [schemas, setSchemas] = useState<Schema[]>([]);
 	const [total, setTotal] = useState(0);
@@ -50,6 +48,13 @@ export function Documents({ onSelectDocument }: Props) {
 	const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
 	const docsRef = useRef(docs);
 	docsRef.current = docs;
+
+	const handleSelectDocument = useCallback(
+		(id: string) => {
+			navigate(`/documents/${id}`);
+		},
+		[navigate],
+	);
 
 	const loadDocuments = useCallback(async () => {
 		setLoading(true);
@@ -312,7 +317,7 @@ export function Documents({ onSelectDocument }: Props) {
 							<KeywordResultsTable
 								results={keywordResults}
 								schemas={schemas}
-								onSelectDocument={onSelectDocument}
+								onSelectDocument={handleSelectDocument}
 							/>
 						)
 					) : semanticResults.length === 0 ? (
@@ -322,7 +327,7 @@ export function Documents({ onSelectDocument }: Props) {
 					) : (
 						<SemanticResultsTable
 							results={semanticResults}
-							onSelectDocument={onSelectDocument}
+							onSelectDocument={handleSelectDocument}
 						/>
 					)}
 				</section>
@@ -354,7 +359,7 @@ export function Documents({ onSelectDocument }: Props) {
 							{docs.map((doc) => (
 								<tr
 									key={doc.id}
-									onClick={() => onSelectDocument(doc.id)}
+									onClick={() => handleSelectDocument(doc.id)}
 									className="cursor-pointer hover:bg-gray-50"
 								>
 									<td className="px-4 py-3 text-sm font-medium">{doc.filename}</td>

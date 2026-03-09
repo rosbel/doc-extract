@@ -1,63 +1,35 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { NavLink, Outlet } from "react-router-dom";
 
-const Documents = lazy(() =>
-	import("./pages/Documents").then((m) => ({ default: m.Documents })),
-);
-const Schemas = lazy(() =>
-	import("./pages/Schemas").then((m) => ({ default: m.Schemas })),
-);
-const DocumentDetail = lazy(() =>
-	import("./pages/DocumentDetail").then((m) => ({
-		default: m.DocumentDetail,
-	})),
-);
-
-type Page = "documents" | "schemas" | "document-detail";
+function navLinkClassName({ isActive }: { isActive: boolean }) {
+	return `rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+		isActive
+			? "bg-sky-100 text-sky-700"
+			: "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+	}`;
+}
 
 export default function App() {
-	const [page, setPage] = useState<Page>("documents");
-	const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-
-	const onSelectDocument = useCallback((id: string) => {
-		setSelectedDocId(id);
-		setPage("document-detail");
-	}, []);
-
-	const onBack = useCallback(() => setPage("documents"), []);
-
 	return (
-		<div className="min-h-screen">
-			<nav className="bg-white border-b shadow-sm">
-				<div className="max-w-6xl mx-auto px-4 flex items-center h-14 gap-6">
-					<span className="font-bold text-lg">DocExtract</span>
-					<button
-						onClick={() => setPage("documents")}
-						className={`text-sm font-medium ${page === "documents" || page === "document-detail" ? "text-blue-600" : "text-gray-600 hover:text-gray-900"}`}
+		<div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.08),_transparent_38%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)]">
+			<nav className="border-b border-slate-200 bg-white/80 shadow-sm backdrop-blur">
+				<div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4">
+					<NavLink
+						to="/documents"
+						className="text-lg font-bold tracking-tight text-slate-900"
 					>
+						DocExtract
+					</NavLink>
+					<NavLink to="/documents" className={navLinkClassName}>
 						Documents
-					</button>
-					<button
-						onClick={() => setPage("schemas")}
-						className={`text-sm font-medium ${page === "schemas" ? "text-blue-600" : "text-gray-600 hover:text-gray-900"}`}
-					>
+					</NavLink>
+					<NavLink to="/schemas" className={navLinkClassName}>
 						Schemas
-					</button>
+					</NavLink>
 				</div>
 			</nav>
 
-			<main className="max-w-6xl mx-auto px-4 py-8">
-				<Suspense fallback={<p>Loading...</p>}>
-					{page === "documents" && (
-						<Documents onSelectDocument={onSelectDocument} />
-					)}
-					{page === "schemas" && <Schemas />}
-					{page === "document-detail" && selectedDocId && (
-						<DocumentDetail
-							documentId={selectedDocId}
-							onBack={onBack}
-						/>
-					)}
-				</Suspense>
+			<main className="mx-auto max-w-6xl px-4 py-8">
+				<Outlet />
 			</main>
 		</div>
 	);

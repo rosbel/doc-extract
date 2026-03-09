@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { Documents } from "./Documents";
 import { api } from "../api";
 
@@ -32,6 +33,20 @@ const documentsListMock = vi.mocked(api.documents.list);
 const documentsStatusMock = vi.mocked(api.documents.status);
 const schemasListMock = vi.mocked(api.schemas.list);
 const searchMock = vi.mocked(api.search);
+
+function LocationDisplay() {
+	const location = useLocation();
+	return <div data-testid="location-display">{location.pathname}</div>;
+}
+
+function renderDocuments() {
+	return render(
+		<MemoryRouter initialEntries={["/documents"]}>
+			<Documents />
+			<LocationDisplay />
+		</MemoryRouter>,
+	);
+}
 
 const baseDocuments = [
 	{
@@ -108,7 +123,7 @@ describe("Documents", () => {
 			],
 		});
 
-		render(<Documents onSelectDocument={vi.fn()} />);
+		renderDocuments();
 
 		await screen.findByText("invoice.pdf");
 		expect(screen.getByText("Search Documents")).toBeInTheDocument();
@@ -131,7 +146,6 @@ describe("Documents", () => {
 	});
 
 	it("submits semantic search with a schema filter and opens document detail on click", async () => {
-		const onSelectDocument = vi.fn();
 		searchMock.mockResolvedValue({
 			mode: "semantic",
 			results: [
@@ -146,7 +160,7 @@ describe("Documents", () => {
 			],
 		});
 
-		render(<Documents onSelectDocument={onSelectDocument} />);
+		renderDocuments();
 
 		await screen.findByText("invoice.pdf");
 
@@ -170,7 +184,9 @@ describe("Documents", () => {
 		expect(screen.getByText("97.3%")).toBeInTheDocument();
 
 		fireEvent.click(screen.getByText("semantic-result.pdf"));
-		expect(onSelectDocument).toHaveBeenCalledWith("doc-3");
+		expect(screen.getByTestId("location-display")).toHaveTextContent(
+			"/documents/doc-3",
+		);
 	});
 
 	it("clears search state and returns to the document list", async () => {
@@ -179,7 +195,7 @@ describe("Documents", () => {
 			results: [],
 		});
 
-		render(<Documents onSelectDocument={vi.fn()} />);
+		renderDocuments();
 
 		await screen.findByText("invoice.pdf");
 
@@ -201,7 +217,7 @@ describe("Documents", () => {
 	});
 
 	it("does not search when the query is empty", async () => {
-		render(<Documents onSelectDocument={vi.fn()} />);
+		renderDocuments();
 
 		await screen.findByText("invoice.pdf");
 
@@ -214,7 +230,7 @@ describe("Documents", () => {
 	it("renders inline search errors", async () => {
 		searchMock.mockRejectedValue(new Error("Search backend unavailable"));
 
-		render(<Documents onSelectDocument={vi.fn()} />);
+		renderDocuments();
 
 		await screen.findByText("invoice.pdf");
 

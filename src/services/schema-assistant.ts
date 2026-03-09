@@ -40,6 +40,15 @@ export interface EditSchemaAssistResult {
 	diff: SchemaDiffEntry[];
 }
 
+class SchemaAssistantOutputError extends Error {
+	statusCode = 502;
+
+	constructor(message: string) {
+		super(message);
+		this.name = "SchemaAssistantOutputError";
+	}
+}
+
 function buildDocumentSummaries(documents: AssistantDocumentInput[]) {
 	return documents
 		.map(
@@ -96,6 +105,69 @@ function normalizeProposal(item: Record<string, unknown>) {
 				? item.matching_documents.map((value) => String(value))
 				: [],
 	} satisfies SchemaAssistantProposal;
+}
+
+function collectRawCreateProposals(parsed: Record<string, unknown>) {
+	if (Array.isArray(parsed.proposals)) {
+		return parsed.proposals;
+	}
+
+	if (
+		typeof parsed.proposal === "object" &&
+		parsed.proposal !== null &&
+		!Array.isArray(parsed.proposal)
+	) {
+		return [parsed.proposal];
+	}
+
+	if (
+		("name" in parsed || "title" in parsed) &&
+		("jsonSchema" in parsed || "json_schema" in parsed || "schema" in parsed)
+	) {
+		return [parsed];
+	}
+
+	return [];
+}
+
+function tryNormalizeProposal(
+	item: unknown,
+	context: "create" | "edit",
+	index = 0,
+): SchemaAssistantProposal | null {
+	if (!item || typeof item !== "object" || Array.isArray(item)) {
+		logger.warn("Schema assistant returned an invalid proposal shape", {
+			context,
+			index,
+			type: Array.isArray(item) ? "array" : typeof item,
+		});
+		return null;
+	}
+
+	try {
+		const proposal = normalizeProposal(item as Record<string, unknown>);
+		if (!proposal.name.trim()) {
+			throw new Error("Proposal name is empty");
+		}
+		if (!proposal.description.trim()) {
+			throw new Error("Proposal description is empty");
+		}
+		if (
+			typeof proposal.jsonSchema !== "object" ||
+			proposal.jsonSchema === null ||
+			Array.isArray(proposal.jsonSchema)
+		) {
+			throw new Error("Proposal jsonSchema is not an object");
+		}
+		return proposal;
+	} catch (error) {
+		logger.warn("Ignoring invalid schema assistant proposal", {
+			context,
+			index,
+			error: error instanceof Error ? error.message : "Unknown error",
+		});
+		return null;
+	}
 }
 
 function stableValue(value: unknown): string {
@@ -244,12 +316,12 @@ ${documents.length > 0 ? `Uploaded documents:\n${buildDocumentSummaries(document
 		},
 	);
 
-	const rawProposals = Array.isArray(parsed.proposals) ? parsed.proposals : [];
+	const rawProposals = collectRawCreateProposals(parsed);
 	return {
 		analysis: typeof parsed.analysis === "string" ? parsed.analysis : "",
-		proposals: rawProposals.map((item) =>
-			normalizeProposal(item as Record<string, unknown>),
-		),
+		proposals: rawProposals
+			.map((item, index) => tryNormalizeProposal(item, "create", index))
+			.filter((proposal): proposal is SchemaAssistantProposal => proposal !== null),
 	};
 }
 
@@ -316,7 +388,16 @@ ${documents.length > 0 ? `Uploaded documents:\n${buildDocumentSummaries(document
 		},
 	);
 
-	const proposal = normalizeProposal(parsed.proposal as Record<string, unknown>);
+	const proposal = tryNormalizeProposal(
+		parsed.proposal ??
+			(Array.isArray(parsed.proposals) ? parsed.proposals[0] : undefined),
+		"edit",
+	);
+	if (!proposal) {
+		throw new SchemaAssistantOutputError(
+			"AI returned an unusable schema revision. Please try again with more guidance or different files.",
+		);
+	}
 	return {
 		analysis: typeof parsed.analysis === "string" ? parsed.analysis : "",
 		proposal,

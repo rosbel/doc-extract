@@ -80,6 +80,94 @@ describe("schema assistant", () => {
 		});
 	});
 
+	it("skips malformed creation proposals instead of throwing", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							analysis: "One candidate was malformed, one was usable.",
+							proposals: [
+								{
+									name: "Broken proposal",
+									description: "Missing a usable schema payload.",
+									jsonSchema: "not-json",
+									classificationHints: ["broken"],
+									reasoning: "This should be ignored.",
+									matchingDocuments: ["broken.csv"],
+								},
+								{
+									name: "RSVP List",
+									description: "Captures event RSVPs and guest counts.",
+									jsonSchema: {
+										type: "object",
+										properties: {
+											guestName: {
+												type: "string",
+												description: "Guest name",
+											},
+										},
+									},
+									classificationHints: ["rsvp", "guest list"],
+									reasoning: "The upload is a structured RSVP export.",
+									matchingDocuments: ["rsvp.csv"],
+								},
+							],
+						}),
+					},
+				},
+			],
+		});
+
+		const result = await assistSchemaCreation(
+			[{ filename: "rsvp.csv", text: "Name,Attending\nAriela,Yes" }],
+			[],
+		);
+
+		expect(result.analysis).toContain("malformed");
+		expect(result.proposals).toHaveLength(1);
+		expect(result.proposals[0]).toMatchObject({
+			name: "RSVP List",
+			classificationHints: ["rsvp", "guest list"],
+		});
+	});
+
+	it("accepts a bare proposal object for creation responses", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							name: "RSVP List",
+							description: "Captures event RSVPs and guest counts.",
+							jsonSchema: {
+								type: "object",
+								properties: {
+									guestName: {
+										type: "string",
+										description: "Guest name",
+									},
+								},
+							},
+							classificationHints: ["rsvp", "guest list"],
+							reasoning: "The upload is a structured RSVP export.",
+							matchingDocuments: ["rsvp.csv"],
+						}),
+					},
+				},
+			],
+		});
+
+		const result = await assistSchemaCreation(
+			[{ filename: "rsvp.csv", text: "Name,Attending\nAriela,Yes" }],
+			[],
+		);
+
+		expect(result.analysis).toBe("");
+		expect(result.proposals).toHaveLength(1);
+		expect(result.proposals[0].name).toBe("RSVP List");
+	});
+
 	it("normalizes edit proposals and computes a field diff", async () => {
 		mockCreate.mockResolvedValueOnce({
 			choices: [
@@ -140,6 +228,58 @@ describe("schema assistant", () => {
 		expect(result.diff.find((entry) => entry.field === "description")?.changed).toBe(
 			true,
 		);
+	});
+
+	it("returns a controlled error when edit output is unusable", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							analysis: "The assistant could not produce a valid revision.",
+							proposal: {
+								name: "",
+								description: "",
+								jsonSchema: "not-json",
+								classificationHints: [],
+								reasoning: "",
+								matchingDocuments: [],
+							},
+						}),
+					},
+				},
+			],
+		});
+
+		await expect(
+			assistSchemaEdit(
+				{
+					id: "schema-1",
+					name: "Invoice",
+					description: "Captures invoice totals.",
+					version: 1,
+					jsonSchema: {
+						type: "object",
+						properties: {
+							total: {
+								type: "number",
+								description: "Invoice total",
+							},
+						},
+					},
+					classificationHints: ["invoice"],
+					status: "active",
+					createdAt: "2026-03-09T12:00:00.000Z",
+					updatedAt: "2026-03-09T12:00:00.000Z",
+				},
+				[{ filename: "invoice-1.pdf", text: "Widget A 10.00" }],
+				"Add repeated charge rows",
+			),
+		).rejects.toMatchObject({
+			message:
+				"AI returned an unusable schema revision. Please try again with more guidance or different files.",
+			statusCode: 502,
+		});
 	});
 
 	it("detects unchanged and changed fields in computeSchemaDiff", () => {

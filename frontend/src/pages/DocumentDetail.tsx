@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type DocumentDetail as DocumentDetailType } from "../api";
 import { ProcessingStepper } from "../components/ProcessingStepper";
 import { StatusBadge } from "../components/StatusBadge";
 
 const PROCESSING_STATUSES = ["pending", "classifying", "extracting"];
 
-interface Props {
-	documentId: string;
-	onBack: () => void;
-}
-
-export function DocumentDetail({ documentId, onBack }: Props) {
+export function DocumentDetail() {
+	const navigate = useNavigate();
+	const { documentId } = useParams();
 	const [doc, setDoc] = useState<DocumentDetailType | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -20,6 +18,12 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 	const [deleteError, setDeleteError] = useState<string | null>(null);
 
 	const load = useCallback(async () => {
+		if (!documentId) {
+			setError("Document not found");
+			setLoading(false);
+			return;
+		}
+
 		setLoading(true);
 		try {
 			const data = await api.documents.get(documentId);
@@ -39,7 +43,9 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 	const docStatus = doc?.status;
 
 	useEffect(() => {
-		if (!docStatus || !PROCESSING_STATUSES.includes(docStatus)) return;
+		if (!documentId || !docStatus || !PROCESSING_STATUSES.includes(docStatus)) {
+			return;
+		}
 
 		const eventSource = api.documents.stream(documentId, (data) => {
 			if (data.type === "status") {
@@ -84,12 +90,12 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 		setDeleteError(null);
 		try {
 			await api.documents.delete(doc.id);
-			onBack();
+			navigate("/documents");
 		} catch (err) {
 			setDeleteError(err instanceof Error ? err.message : "Failed to delete");
 			setDeleting(false);
 		}
-	}, [deleting, doc, onBack]);
+	}, [deleting, doc, navigate]);
 
 	if (loading && !doc) return <p className="text-gray-500">Loading...</p>;
 	if (error) return <p className="text-red-600">{error}</p>;
@@ -97,9 +103,13 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 
 	return (
 		<div className="space-y-6">
-			<button onClick={onBack} className="text-blue-600 hover:text-blue-800 text-sm">
-				&larr; Back to Documents
-			</button>
+			<Link
+				to="/documents"
+				className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:text-sky-900"
+			>
+				<span aria-hidden="true">&larr;</span>
+				Back to Documents
+			</Link>
 
 			<div className="flex justify-between items-start">
 				<div>
