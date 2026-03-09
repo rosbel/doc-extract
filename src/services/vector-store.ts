@@ -43,6 +43,22 @@ function getPinecone(): Pinecone | null {
 	return pinecone;
 }
 
+function getIndex(): ReturnType<Pinecone["index"]> | null {
+	const pc = getPinecone();
+	if (!pc) return null;
+	const client = pc as Pinecone & {
+		index?: (indexName: string) => unknown;
+		Index?: (indexName: string) => unknown;
+	};
+	if (typeof client.index === "function") {
+		return client.index(config.pinecone.index);
+	}
+	if (typeof client.Index === "function") {
+		return client.Index(config.pinecone.index);
+	}
+	return null;
+}
+
 async function getEmbedding(text: string): Promise<number[]> {
 	const client = getOpenRouterClient();
 	const response = await client.embeddings.create({
@@ -62,8 +78,8 @@ export function isSemanticSearchConfigured(): boolean {
 }
 
 export async function indexDocument(input: IndexedDocumentInput): Promise<void> {
-	const pc = getPinecone();
-	if (!pc) return;
+	const index = getIndex();
+	if (!index) return;
 
 	const chunks = buildSearchChunks({
 		filename: input.filename,
@@ -76,8 +92,6 @@ export async function indexDocument(input: IndexedDocumentInput): Promise<void> 
 	if (chunks.length === 0) return;
 
 	const embeddings = await embedChunks(chunks);
-
-	const index = pc.Index(config.pinecone.index);
 	await index.upsert(
 		chunks.map((chunk, indexNumber) => ({
 			id: `${input.documentId}:${chunk.idSuffix}`,
@@ -105,8 +119,8 @@ export async function searchDocument(
 		schemaJsonSchema?: Record<string, unknown> | null;
 	},
 ): Promise<SemanticChunkMatch[]> {
-	const pc = getPinecone();
-	if (!pc) {
+	const index = getIndex();
+	if (!index) {
 		throw new Error("Semantic search backend unavailable");
 	}
 
@@ -115,7 +129,6 @@ export async function searchDocument(
 		jsonSchema: options?.schemaJsonSchema,
 	});
 	const embedding = await getEmbedding(semanticQuery);
-	const index = pc.Index(config.pinecone.index);
 	const results = await index.query({
 		vector: embedding,
 		topK: limit,
@@ -128,4 +141,22 @@ export async function searchDocument(
 		score: m.score || 0,
 		metadata: (m.metadata as SemanticChunkMatch["metadata"]) ?? null,
 	}));
+}
+
+export async function describeVectorIndexStats() {
+	const index = getIndex();
+	if (!index) return null;
+	return index.describeIndexStats();
+}
+
+export async function deleteDocumentVectors(documentId: string) {
+	const index = getIndex();
+	if (!index) return;
+	await index.deleteMany({ documentId: { $eq: documentId } });
+}
+
+export async function clearVectorIndex() {
+	const index = getIndex();
+	if (!index) return;
+	await index.deleteAll();
 }

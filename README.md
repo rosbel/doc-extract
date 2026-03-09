@@ -37,7 +37,7 @@ pnpm install
 
 # 3. Configure environment
 cp .env.example .env
-# Edit .env with your OpenRouter API key
+# Edit .env with your OpenRouter API key and an ADMIN_TOKEN for the admin console
 
 # 4. Push database schema
 pnpm db:push
@@ -63,6 +63,7 @@ pnpm dev:all
 3. **Watch processing** — Status transitions: pending → classifying → extracting → completed
 4. **View results** — Extracted structured data with confidence scores
 5. **Search** — Smart Search blends semantic retrieval with exact-match signals, with exact-text fallback when vectors are unavailable
+6. **Admin console** — Visit `http://localhost:5173/admin`, enter `ADMIN_TOKEN`, and inspect queue/storage/provider health or run guarded maintenance actions
 
 ## API Reference
 
@@ -92,6 +93,18 @@ pnpm dev:all
 |--------|------|-------------|
 | POST | `/api/search` | Search extracted data with hybrid smart search or exact-text mode |
 
+### Admin
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/admin/overview` | System health and operational summary |
+| GET | `/api/admin/documents` | Admin document inventory with filters |
+| DELETE | `/api/admin/documents/:id` | Hard-delete one document after confirmation |
+| POST | `/api/admin/queue/pause` | Pause BullMQ processing |
+| POST | `/api/admin/queue/resume` | Resume BullMQ processing |
+| POST | `/api/admin/queue/clear` | Clear completed, failed, or waiting/delayed queue state |
+| POST | `/api/admin/pinecone/clear` | Clear Pinecone vectors in the app namespace |
+| POST | `/api/admin/reset` | Reset documents, schemas, uploads, queue state, and vectors |
+
 ## Design Decisions
 
 1. **Content hashing (SHA-256)** — Prevents duplicate processing. Upload returns 409 with existing document ID.
@@ -113,6 +126,8 @@ pnpm dev:all
 ## Deliberate Simplifications
 
 - **Authentication and authorization** are intentionally omitted because the prompt explicitly allowed that tradeoff.
+- **Admin access uses a shared secret** (`ADMIN_TOKEN`) instead of user accounts or roles. This is intended for internal environments only.
+- **Admin brute-force protection is in-memory**: repeated invalid admin token attempts are rate-limited and temporarily locked out per API process. This is acceptable for the MVP, but it is not shared across replicas or restarts; Redis-backed tracking would be the next step for multi-instance deployments.
 - **File storage uses the local filesystem** instead of S3/GCS. The storage path is persisted so this can be swapped behind the same document model later.
 - **Extraction text is truncated before LLM calls** to keep token usage bounded. For larger production deployments, this should evolve into chunking + schema-aware aggregation rather than a fixed cutoff.
 - **Smart Search degrades gracefully** to exact-text search when Pinecone is not configured or unavailable, and the UI explains that fallback without exposing backend implementation details.

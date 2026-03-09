@@ -22,3 +22,11 @@ export type DocumentWithRelations = Document & {
 	schemaRevision: SchemaRevision | null;
 	jobs: ProcessingJob[];
 };
+
+export type {
+	AdminActionResult,
+	AdminDocumentRow,
+	AdminOverview,
+	AdminQueueStatus,
+	AdminServiceStatus,
+} from "./admin.js";

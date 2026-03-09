@@ -22,6 +22,9 @@ const SchemaWorkbenchPage = lazy(() =>
 		default: m.SchemaWorkbenchPage,
 	})),
 );
+const Admin = lazy(() =>
+	import("./pages/Admin").then((m) => ({ default: m.Admin })),
+);
 
 function withSuspense(node: ReactNode) {
 	return <Suspense fallback={<p>Loading...</p>}>{node}</Suspense>;
@@ -55,6 +58,10 @@ export const appRoutes: RouteObject[] = [
 			{
 				path: "schemas/:schemaId/edit",
 				element: withSuspense(<SchemaWorkbenchPage mode="edit" />),
+			},
+			{
+				path: "admin",
+				element: withSuspense(<Admin />),
 			},
 		],
 	},

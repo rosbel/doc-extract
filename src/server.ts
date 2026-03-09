@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestLogger } from "./middleware/request-logger.js";
+import { adminRouter } from "./routes/admin.js";
 import { documentsRouter } from "./routes/documents.js";
 import { schemasRouter } from "./routes/schemas.js";
 import { searchRouter } from "./routes/search.js";
@@ -38,6 +39,7 @@ app.get("/health", (_req, res) => {
 });
 
 // Routes
+app.use("/api/admin", adminRouter);
 app.use("/api/schemas", schemasRouter);
 app.use("/api/documents", uploadLimiter, documentsRouter);
 app.use("/api/search", searchRouter);

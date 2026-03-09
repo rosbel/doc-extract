@@ -1,14 +1,81 @@
 const BASE = "/api";
+const ADMIN_TOKEN_STORAGE_KEY = "admin-token";
+
+type ApiError = Error & {
+	status?: number;
+	body?: Record<string, unknown>;
+};
+
+function buildApiError(
+	res: Response,
+	body: Record<string, unknown>,
+): ApiError {
+	const details = Array.isArray(body.details)
+		? body.details
+				.map((detail) =>
+					typeof detail?.path === "string" && typeof detail?.message === "string"
+						? `${detail.path}: ${detail.message}`
+						: null,
+				)
+				.filter(Boolean)
+				.join("; ")
+		: "";
+	const error = new Error(
+		details
+			? `${String(body.error)}: ${details}`
+			: String(body.error || `Request failed: ${res.status}`),
+	) as ApiError;
+	error.status = res.status;
+	error.body = body;
+	return error;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+	const headers = new Headers(options?.headers);
+	headers.set("Content-Type", "application/json");
+
 	const res = await fetch(`${BASE}${path}`, {
-		headers: { "Content-Type": "application/json" },
 		...options,
+		headers,
 	});
 	if (!res.ok) {
-		const body = await res.json().catch(() => ({}));
-		const details = body.details?.map((d: { path: string; message: string }) => `${d.path}: ${d.message}`).join("; ");
-		throw new Error(details ? `${body.error}: ${details}` : (body.error || `Request failed: ${res.status}`));
+		const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+		throw buildApiError(res, body);
+	}
+	return res.json();
+}
+
+export const adminTokenStore = {
+	get() {
+		if (typeof window === "undefined") return "";
+		return window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+	},
+	set(token: string) {
+		if (typeof window === "undefined") return;
+		window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+	},
+	clear() {
+		if (typeof window === "undefined") return;
+		window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+	},
+};
+
+async function adminRequest<T>(path: string, options?: RequestInit): Promise<T> {
+	const headers = new Headers(options?.headers);
+	headers.set("Content-Type", "application/json");
+
+	const token = adminTokenStore.get();
+	if (token) {
+		headers.set("x-admin-token", token);
+	}
+
+	const res = await fetch(`${BASE}${path}`, {
+		...options,
+		headers,
+	});
+	if (!res.ok) {
+		const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+		throw buildApiError(res, body);
 	}
 	return res.json();
 }
@@ -132,6 +199,91 @@ export interface SearchResponse {
 	degradedReason?: "semantic_unavailable";
 }
 
+export interface AdminServiceStatus {
+	configured: boolean;
+	status: "healthy" | "degraded" | "offline" | "disabled";
+	message?: string;
+}
+
+export interface AdminQueueStatus {
+	paused: boolean;
+	maintenanceMode: boolean;
+	counts: Record<
+		"waiting" | "active" | "delayed" | "completed" | "failed" | "paused",
+		number
+	>;
+	recentJobs: Array<{
+		id: string;
+		name: string;
+		state: string;
+		attemptsMade: number;
+		documentId: string | null;
+		timestamp: number;
+	}>;
+	worker: {
+		status: "online" | "stale" | "offline";
+		lastHeartbeatAt: string | null;
+		ageMs: number | null;
+	};
+}
+
+export interface AdminDocumentRow {
+	id: string;
+	filename: string;
+	status: string;
+	schemaId: string | null;
+	schemaName: string | null;
+	retryCount: number;
+	storagePath: string;
+	errorMessage: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface AdminActionResult {
+	ok: boolean;
+	message: string;
+	warnings: string[];
+	details?: Record<string, unknown>;
+}
+
+export interface AdminOverview {
+	postgres: {
+		documentCounts: Record<string, number>;
+		schemaCounts: Record<string, number>;
+		jobCounts: Record<string, number>;
+		recentFailedDocuments: Array<{
+			id: string;
+			filename: string;
+			errorMessage: string | null;
+			updatedAt: string;
+		}>;
+		recentFailedJobs: Array<{
+			id: string;
+			documentId: string;
+			jobType: string;
+			errorMessage: string | null;
+			completedAt: string | null;
+			createdAt: string;
+		}>;
+	};
+	uploads: {
+		path: string;
+		exists: boolean;
+		fileCount: number;
+		totalBytes: number;
+	};
+	queue: AdminQueueStatus;
+	pinecone: AdminServiceStatus & {
+		index: string;
+		totalRecordCount: number | null;
+		namespaceCount: number | null;
+	};
+	openrouter: AdminServiceStatus & {
+		model: string;
+	};
+}
+
 export const api = {
 	schemas: {
 		list: () => request<Schema[]>("/schemas"),
@@ -252,4 +404,47 @@ export const api = {
 				...(schemaId ? { schemaId } : {}),
 			}),
 		}),
+	admin: {
+		overview: () => adminRequest<AdminOverview>("/admin/overview"),
+		documents: (params?: Record<string, string>) => {
+			const qs = params ? `?${new URLSearchParams(params)}` : "";
+			return adminRequest<{
+				documents: AdminDocumentRow[];
+				total: number;
+				page: number;
+				limit: number;
+			}>(`/admin/documents${qs}`);
+		},
+		deleteDocument: (id: string, confirmation: string) =>
+			adminRequest<AdminActionResult>(`/admin/documents/${id}`, {
+				method: "DELETE",
+				body: JSON.stringify({ confirmation }),
+			}),
+		pauseQueue: () =>
+			adminRequest<AdminActionResult>("/admin/queue/pause", {
+				method: "POST",
+			}),
+		resumeQueue: () =>
+			adminRequest<AdminActionResult>("/admin/queue/resume", {
+				method: "POST",
+			}),
+		clearQueue: (
+			scope: "completed" | "failed" | "waiting_delayed",
+			confirmation: string,
+		) =>
+			adminRequest<AdminActionResult>("/admin/queue/clear", {
+				method: "POST",
+				body: JSON.stringify({ scope, confirmation }),
+			}),
+		clearPinecone: (confirmation: string) =>
+			adminRequest<AdminActionResult>("/admin/pinecone/clear", {
+				method: "POST",
+				body: JSON.stringify({ confirmation }),
+			}),
+		reset: (confirmation: string) =>
+			adminRequest<AdminActionResult>("/admin/reset", {
+				method: "POST",
+				body: JSON.stringify({ confirmation }),
+			}),
+	},
 };
