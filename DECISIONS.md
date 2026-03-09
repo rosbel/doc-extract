@@ -168,7 +168,8 @@ This means a user can define a new document type (e.g., "Medical Lab Report") by
 | Data | Where | Why |
 |------|-------|-----|
 | **Original file** | Local filesystem (`./uploads/`) | Preserves source material for re-processing, audit, and potential re-parsing with improved parsers |
-| **Raw extracted text** | `documents.rawText` (PostgreSQL text column) | Enables full-text search without re-parsing; allows re-classification and re-extraction without touching the file system |
+| **Raw extracted text** | `documents.rawText` (PostgreSQL text column) | Enables re-classification, re-extraction, and chunked semantic indexing without re-parsing files |
+| **Denormalized search corpus** | `documents.searchText` (PostgreSQL text column) | Stable hybrid-search input built from filename, schema context, flattened extracted fields, and raw text |
 | **Content hash** | `documents.contentHash` (unique-indexed text) | Byte-level deduplication at upload time |
 | **File metadata** | `documents.filename`, `mimeType`, `fileSize`, `storagePath` | Context for display, debugging, and file retrieval |
 | **Processing status** | `documents.status` (enum) | Current state in the pipeline for polling and filtering |
@@ -178,7 +179,7 @@ This means a user can define a new document type (e.g., "Medical Lab Report") by
 | **Error details** | `documents.errorMessage` (text) | Debugging and user feedback on failures |
 | **Processing audit trail** | `processingJobs` table (JSONB metadata) | Complete history of every LLM call with timing, attempt numbers, errors, and full response metadata |
 | **Schema definitions** | `extractionSchemas.jsonSchema` (JSONB) | User-defined extraction templates |
-| **Vector embeddings** | Pinecone (optional) | Semantic search across extracted content |
+| **Vector embeddings** | Pinecone (optional) | Chunked semantic retrieval across structured and raw document content |
 
 ### How it is Stored
 
@@ -194,6 +195,8 @@ Three tables with clear relationships:
 
 - **JSONB for `extractedData`**: Since each document type has a different schema, the extracted output varies per document. JSONB stores any valid JSON object and supports PostgreSQL's JSON query operators, allowing filtered queries (e.g., "find all invoices where `vendor_name` contains 'Acme'") without per-schema migrations. This is the central storage decision — it decouples the document types from the database schema.
 
+- **Denormalized `searchText` on documents**: Search should not depend on reconstructing ad hoc text at query time from `rawText` plus JSON casting. Persisting a normalized corpus keeps PostgreSQL full-text behavior predictable, lets search ranking use the same text the vector layer sees, and creates a clean place to add a GIN index.
+
 - **JSONB for `jsonSchema` on schemas**: Stores the full JSON Schema definition as a first-class database object. No file-system dependency for schema definitions.
 
 - **JSONB for `metadata` on processing jobs**: Stores full LLM response data (model, tokens used, raw output) for debugging and analytics without a rigid column structure.
@@ -202,13 +205,15 @@ Three tables with clear relationships:
 
 - **Unique index on `contentHash`**: Database-enforced deduplication, not just application-level.
 
+- **GIN index on `searchText` tsvector**: Keyword fallback and hybrid boosting need fast lookup on the denormalized search corpus rather than repeated full-table vectorization.
+
 **File storage: Local filesystem**
 
 Original uploaded files are stored at `./uploads/{uuid}-{filename}` via Multer. The `storagePath` is recorded in the database for retrieval. This is intentionally simple — in production, this would be swapped for S3/GCS with the same interface.
 
 **Vector storage: Pinecone (optional)** (`src/services/vector-store.ts`)
 
-After successful extraction, a summary embedding is upserted to Pinecone for semantic search. This is best-effort — Pinecone failures don't block document completion. The vector store is only active when `PINECONE_API_KEY` is configured.
+After successful extraction, the service builds a structured header chunk plus overlapping raw-text chunks and upserts them to Pinecone. This is best-effort — Pinecone failures don't block document completion. The vector store is only active when `PINECONE_API_KEY` is configured, and search degrades to exact-text mode when vectors are unavailable.
 
 ---
 
@@ -248,9 +253,19 @@ The separation between the full detail endpoint and the lightweight status endpo
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/search` | Search documents by keyword (PostgreSQL full-text + JSONB ILIKE) or semantic similarity (Pinecone vectors) |
+| `POST /api/search` | Search documents with hybrid smart search or exact-text mode |
 
-Search supports two modes: `keyword` uses PostgreSQL's `to_tsvector`/`plainto_tsquery` for full-text search on raw text plus ILIKE on extracted JSONB data. `semantic` uses Pinecone vector similarity for meaning-based retrieval. Both support optional `schemaId` filtering.
+Search now defaults to `hybrid`, which combines Pinecone chunk retrieval with PostgreSQL full-text ranking and exact-match boosts. `keyword` remains available as an explicit exact-text mode. Both support optional `schemaId` filtering.
+
+The hybrid path works as follows:
+
+- A semantic query is expanded with selected schema context (schema name and field names) before embedding.
+- Pinecone retrieves the top matching chunks, and chunk matches are collapsed back to document-level candidates.
+- PostgreSQL scores the same query against `documents.searchText` using full-text ranking plus exact-match checks on filename and extracted values.
+- Final scores blend semantic score, normalized keyword score, and small structured boosts for exact field matches, multi-chunk coverage, and high extraction confidence.
+- The API returns one unified result list with `score`, `snippet`, `matchReasons`, `matchedFields`, `degraded`, and optional `degradedReason`.
+
+This design keeps semantic retrieval as the primary behavior without making Pinecone a hard dependency. When vectors are unavailable, the response is still structurally identical and the frontend can present a user-friendly “exact text fallback” message instead of a backend-specific error.
 
 #### AI Recommendations (`src/routes/recommendations.ts`)
 

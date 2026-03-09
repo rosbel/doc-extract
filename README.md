@@ -16,7 +16,7 @@ A service that ingests documents and turns them into structured, queryable knowl
                     └───────────────────────────────┘
 ```
 
-**Flow**: Upload → SHA-256 dedup → extract text → classify against schemas (LLM) → extract structured data per schema (LLM) → store results → optionally index in Pinecone.
+**Flow**: Upload → SHA-256 dedup → extract text → classify against schemas (LLM) → extract structured data per schema (LLM) → store results → build search corpus → optionally index chunked embeddings in Pinecone.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ A service that ingests documents and turns them into structured, queryable knowl
 - pnpm
 - Docker & Docker Compose
 - OpenRouter API key (for LLM access)
-- Pinecone API key (optional, for semantic search)
+- Pinecone API key (optional, for Smart Search semantic retrieval)
 
 ## Quick Start
 
@@ -62,7 +62,7 @@ pnpm dev:all
 2. **Upload a document** — PDF, DOCX, TXT, CSV, JSON, or Markdown
 3. **Watch processing** — Status transitions: pending → classifying → extracting → completed
 4. **View results** — Extracted structured data with confidence scores
-5. **Search** — Full-text keyword search or semantic search (with Pinecone)
+5. **Search** — Smart Search blends semantic retrieval with exact-match signals, with exact-text fallback when vectors are unavailable
 
 ## API Reference
 
@@ -90,7 +90,7 @@ pnpm dev:all
 ### Search
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/search` | Search extracted data |
+| POST | `/api/search` | Search extracted data with hybrid smart search or exact-text mode |
 
 ## Design Decisions
 
@@ -107,6 +107,7 @@ pnpm dev:all
 - **BullMQ / Redis**: High comfort. Chosen to keep ingestion asynchronous and resilient under retries and reprocessing.
 - **React / Vite**: High comfort. Used for a minimal frontend to exercise schema creation, uploads, and result inspection.
 - **Pinecone**: Moderate comfort. Included as an optional semantic search backend; the service still works without it.
+- **Search indexing**: Moderate comfort. Hybrid ranking uses PostgreSQL full-text plus optional Pinecone vectors for better recall without making vector infrastructure mandatory.
 - **OpenRouter / LLM structured output**: High comfort. Used because schema-driven extraction is the central product requirement.
 
 ## Deliberate Simplifications
@@ -114,7 +115,25 @@ pnpm dev:all
 - **Authentication and authorization** are intentionally omitted because the prompt explicitly allowed that tradeoff.
 - **File storage uses the local filesystem** instead of S3/GCS. The storage path is persisted so this can be swapped behind the same document model later.
 - **Extraction text is truncated before LLM calls** to keep token usage bounded. For larger production deployments, this should evolve into chunking + schema-aware aggregation rather than a fixed cutoff.
-- **Semantic search is optional** and only active when Pinecone is configured, so the core ingestion path does not depend on vector infrastructure.
+- **Smart Search degrades gracefully** to exact-text search when Pinecone is not configured or unavailable, and the UI explains that fallback without exposing backend implementation details.
+
+## Search Behavior
+
+- **Default mode is Smart Search**: `POST /api/search` defaults to `hybrid`, which combines Pinecone semantic retrieval with PostgreSQL full-text and exact-match boosts.
+- **Exact text remains available**: clients can explicitly send `mode: "keyword"` for literal matching behavior.
+- **Unified result shape**: search returns one result list with `score`, `snippet`, `matchReasons`, `matchedFields`, `degraded`, and optional `degradedReason`.
+- **Search corpus is denormalized**: documents persist a `search_text` value built from filename, schema context, flattened extracted fields, and raw text for reliable fallback and boosting.
+- **Vector indexing is chunked**: Pinecone stores one structured header chunk plus overlapping raw-text chunks per document instead of a single JSON summary embedding.
+
+## Schema Updates
+
+The search upgrade adds a `documents.search_text` column and GIN index. After pulling these changes, run:
+
+```bash
+pnpm db:push
+```
+
+Existing documents will pick up the richer search corpus and vector chunks after reprocessing or an explicit backfill.
 
 ## Testing
 
@@ -130,4 +149,5 @@ pnpm test:watch  # Watch mode
 - **LLM**: OpenRouter (Claude Sonnet via OpenAI-compatible API)
 - **Frontend**: React 19, Vite, TailwindCSS
 - **Vector Search**: Pinecone (optional)
+- **Search Strategy**: Hybrid semantic + exact-match ranking with graceful fallback
 - **Infrastructure**: Docker Compose
