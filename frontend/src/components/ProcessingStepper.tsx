@@ -6,6 +6,7 @@ const STEPS = [
 ] as const;
 
 type StepState = "completed" | "active" | "pending" | "failed" | "stalled";
+type ExtendedStepState = StepState | "unclassified";
 
 interface ProcessingStepperProps {
 	status: string;
@@ -29,9 +30,13 @@ function getActiveIndex(status: string): number {
 	}
 }
 
-function getStepStates(status: string, isStuck: boolean): StepState[] {
+function getStepStates(status: string, isStuck: boolean): ExtendedStepState[] {
 	if (status === "completed") {
 		return ["completed", "completed", "completed", "completed"];
+	}
+
+	if (status === "unclassified") {
+		return ["completed", "completed", "unclassified", "pending"];
 	}
 
 	if (status === "duplicate") {
@@ -58,7 +63,7 @@ function getStepStates(status: string, isStuck: boolean): StepState[] {
 	});
 }
 
-function StepIcon({ state }: { state: StepState }) {
+function StepIcon({ state }: { state: ExtendedStepState }) {
 	switch (state) {
 		case "completed":
 			return (
@@ -78,6 +83,8 @@ function StepIcon({ state }: { state: StepState }) {
 					<path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
 				</svg>
 			);
+		case "unclassified":
+			return <span className="h-0.5 w-3 rounded-full bg-white" />;
 		case "active":
 			return <span className="w-2.5 h-2.5 rounded-full bg-white" />;
 		case "pending":
@@ -85,20 +92,22 @@ function StepIcon({ state }: { state: StepState }) {
 	}
 }
 
-const circleClasses: Record<StepState, string> = {
+const circleClasses: Record<ExtendedStepState, string> = {
 	completed: "bg-green-500",
 	active: "bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.3)] animate-pulse",
 	pending: "bg-gray-200",
 	failed: "bg-red-500",
 	stalled: "bg-amber-500",
+	unclassified: "bg-amber-500",
 };
 
-const labelClasses: Record<StepState, string> = {
+const labelClasses: Record<ExtendedStepState, string> = {
 	completed: "text-green-700",
 	active: "text-blue-700 font-medium",
 	pending: "text-gray-400",
 	failed: "text-red-700 font-medium",
 	stalled: "text-amber-700 font-medium",
+	unclassified: "text-amber-700 font-medium",
 };
 
 export function ProcessingStepper({ status, isStuck }: ProcessingStepperProps) {
@@ -106,6 +115,7 @@ export function ProcessingStepper({ status, isStuck }: ProcessingStepperProps) {
 
 	const getLabelOverride = (index: number): string | null => {
 		if (status === "duplicate" && index === 1) return "Duplicate";
+		if (status === "unclassified" && index === 2) return "Unclassified";
 		return null;
 	};
 

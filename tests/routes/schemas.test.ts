@@ -90,6 +90,16 @@ describe("Schema validation", () => {
 			expect(result.hasFiles).toBe(true);
 		});
 
+		it("accepts create mode with stored document ids only", () => {
+			const result = schemaAssistRequestInput.parse({
+				mode: "create",
+				documentIds: ["550e8400-e29b-41d4-a716-446655440000"],
+			});
+			expect(result.documentIds).toEqual([
+				"550e8400-e29b-41d4-a716-446655440000",
+			]);
+		});
+
 		it("requires schemaId in edit mode", () => {
 			expect(() =>
 				schemaAssistRequestInput.parse({
@@ -104,7 +114,7 @@ describe("Schema validation", () => {
 				schemaAssistRequestInput.parse({
 					mode: "create",
 				}),
-			).toThrow(/provide a prompt, files, or both/i);
+			).toThrow(/provide a prompt, files, documentIds, or a combination/i);
 		});
 	});
 });

@@ -3,6 +3,7 @@ const STATUS_COLORS: Record<string, string> = {
 	classifying: "bg-blue-100 text-blue-800",
 	extracting: "bg-indigo-100 text-indigo-800",
 	completed: "bg-green-100 text-green-800",
+	unclassified: "bg-amber-100 text-amber-800",
 	failed: "bg-red-100 text-red-800",
 	duplicate: "bg-gray-100 text-gray-800",
 };

@@ -14,6 +14,10 @@ import { useUnsavedChangesPrompt } from "../hooks/useUnsavedChangesPrompt";
 interface Props {
 	schema?: Schema | null;
 	assistantFirst?: boolean;
+	sourceDocument?: {
+		id: string;
+		filename: string;
+	} | null;
 	onSaved: () => void;
 	onCancel: () => void;
 }
@@ -79,6 +83,7 @@ function DraftPreview({
 export function SchemaWorkbench({
 	schema,
 	assistantFirst = false,
+	sourceDocument = null,
 	onSaved,
 	onCancel,
 }: Props) {
@@ -183,7 +188,7 @@ export function SchemaWorkbench({
 		setAssistantPrompt("");
 		setAssistantFiles([]);
 		setNavigationUnlocked(false);
-	}, [schema, assistantFirst]);
+	}, [schema, assistantFirst, sourceDocument?.id]);
 
 	useEffect(() => {
 		return () => {
@@ -278,14 +283,18 @@ export function SchemaWorkbench({
 		isCreateMode && appliedCreateProposalIndex !== null && createProposals.length > 0;
 
 	const createActionLabel =
-		assistantFiles.length > 0 ? "Analyze Documents" : "Generate Drafts";
+		assistantFiles.length > 0 || sourceDocument ? "Analyze Documents" : "Generate Drafts";
 	const editActionLabel =
 		assistantFiles.length > 0 ? "Analyze Schema Changes" : "Suggest Edits";
 
 	const runAssistant = async () => {
-		if (!assistantPrompt.trim() && assistantFiles.length === 0) {
+		if (
+			!assistantPrompt.trim() &&
+			assistantFiles.length === 0 &&
+			!sourceDocument
+		) {
 			setAssistantError(
-				"Upload documents, add optional guidance, or do both before running AI assist.",
+				"Upload documents, use the loaded sample, add optional guidance, or combine them before running AI assist.",
 			);
 			return;
 		}
@@ -302,6 +311,7 @@ export function SchemaWorkbench({
 				prompt: assistantPrompt,
 				schemaId: schema?.id,
 				files: assistantFiles,
+				documentIds: sourceDocument ? [sourceDocument.id] : [],
 			});
 
 			setAssistantAnalysis(response.analysis);
@@ -448,6 +458,15 @@ export function SchemaWorkbench({
 								? "These files are the primary signal. AI will detect the schema shape that best explains each uploaded document and the group as a whole."
 								: "These files give AI concrete evidence for how the existing schema should evolve."}
 						</p>
+						{sourceDocument && isCreateMode && (
+							<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+								<p className="font-medium">Loaded sample document</p>
+								<p className="mt-1">
+									{sourceDocument.filename} will be included when you click
+									Analyze Documents.
+								</p>
+							</div>
+						)}
 						<input
 							id="assistant-files"
 							type="file"

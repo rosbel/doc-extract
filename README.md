@@ -60,7 +60,7 @@ pnpm dev:all
 
 1. **Create a schema** — Define it manually or use AI assist from prompts and sample documents
 2. **Upload a document** — PDF, DOCX, TXT, CSV, JSON, or Markdown
-3. **Watch processing** — Status transitions: pending → classifying → extracting → completed
+3. **Watch processing** — Status transitions: pending → classifying → extracting → completed (or `unclassified` / `failed` when processing cannot produce a matching extracted result)
 4. **View results** — Extracted structured data with confidence scores
 5. **Search** — Smart Search blends semantic retrieval with exact-match signals, with exact-text fallback when vectors are unavailable
 
@@ -95,7 +95,7 @@ pnpm dev:all
 ## Design Decisions
 
 1. **Content hashing (SHA-256)** — Prevents duplicate processing. Upload returns 409 with existing document ID.
-2. **Two-phase pipeline (classify → extract)** — Allows independent retry and re-classification when schemas change.
+2. **Two-phase pipeline (classify → extract)** — Allows independent retry and re-classification when schemas change. Extraction is pinned to the saved schema revision chosen at processing time, not a mutable live schema row.
 3. **JSON Schema passthrough** — User-defined schemas flow directly to OpenRouter's `response_format`. No Zod conversion needed.
 4. **JSONB for extracted data** — Supports querying on dynamic structures without schema migrations.
 5. **BullMQ** — Production-grade job queue with retries, rate limiting, and stalled job recovery.
@@ -133,7 +133,11 @@ The search upgrade adds a `documents.search_text` column and GIN index. After pu
 pnpm db:push
 ```
 
-Existing documents will pick up the richer search corpus and vector chunks after reprocessing or an explicit backfill.
+Schema changes are versioned forward. Every schema save creates a new revision, and documents processed before that save keep their existing `extractedData`, `schemaVersion`, and `schemaRevisionId` until they are explicitly reprocessed.
+
+Reprocessing resets a document's schema assignment and extracted output, then runs classification and extraction again against the latest eligible schema revision at that time.
+
+Existing documents will pick up the richer search corpus and vector chunks after reprocessing or an explicit backfill. After a schema change, older documents and newly reprocessed documents may temporarily have different extracted shapes until the older set is reprocessed.
 
 ## Testing
 

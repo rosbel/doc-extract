@@ -261,7 +261,11 @@ documentsRouter.get("/:id/stream", async (req, res) => {
 			}
 
 			// Terminal states end the stream
-			if (current.status === "completed" || current.status === "failed") {
+			if (
+				current.status === "completed" ||
+				current.status === "failed" ||
+				current.status === "unclassified"
+			) {
 				res.end();
 				return;
 			}

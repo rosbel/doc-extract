@@ -7,7 +7,8 @@ import type { ExtractionSchema } from "../types/index.js";
 const MAX_TEXT_LENGTH = 8000;
 
 export interface ClassificationResult {
-	schemaId: string;
+	matched: boolean;
+	schemaId: string | null;
 	confidence: number;
 	reasoning: string;
 }
@@ -31,7 +32,7 @@ export async function classifyDocument(
 		messages: [
 			{
 				role: "system",
-				content: `You are a document classifier. Given document text and a list of schemas, determine which schema best matches the document. Respond with the schema ID, a confidence score (0-1), and brief reasoning.
+				content: `You are a document classifier. Given document text and a list of schemas, determine which schema best matches the document. If none of the schemas are a reasonable fit, return matched=false and schemaId=null. Only return matched=true when the document clearly fits one of the provided schemas. Respond with matched, schemaId, a confidence score (0-1), and brief reasoning.
 
 IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or after the JSON.`,
 			},
@@ -48,9 +49,15 @@ IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or 
 				schema: {
 					type: "object",
 					properties: {
+						matched: {
+							type: "boolean",
+							description:
+								"Whether the document matches one of the provided schemas",
+						},
 						schemaId: {
-							type: "string",
-							description: "The ID of the matching schema",
+							type: ["string", "null"],
+							description:
+								"The ID of the matching schema, or null when no schema matches",
 						},
 						confidence: {
 							type: "number",
@@ -61,7 +68,7 @@ IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or 
 							description: "Brief explanation of why this schema was chosen",
 						},
 					},
-					required: ["schemaId", "confidence", "reasoning"],
+					required: ["matched", "schemaId", "confidence", "reasoning"],
 					additionalProperties: false,
 				},
 			},
@@ -79,6 +86,32 @@ IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or 
 	const raw = result as unknown as Record<string, unknown>;
 	if (!result.schemaId && raw.schema_id) {
 		result.schemaId = raw.schema_id as string;
+	}
+	if (typeof raw.matched === "boolean") {
+		result.matched = raw.matched;
+	}
+	if (typeof result.matched !== "boolean") {
+		result.matched = Boolean(result.schemaId);
+	}
+
+	const normalizedSchemaId =
+		typeof result.schemaId === "string" ? result.schemaId.trim() : result.schemaId;
+	if (
+		normalizedSchemaId &&
+		["none", "null", "no_match", "unclassified"].includes(
+			normalizedSchemaId.toLowerCase(),
+		)
+	) {
+		result.matched = false;
+		result.schemaId = null;
+	}
+
+	if (result.matched === false) {
+		result.schemaId = null;
+		logger.info("Document classified as unclassified", {
+			confidence: result.confidence,
+		});
+		return result;
 	}
 
 	if (!result.schemaId || typeof result.schemaId !== "string") {

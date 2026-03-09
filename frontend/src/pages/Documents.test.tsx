@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { Documents } from "./Documents";
-import { api } from "../api";
+import { api, type Document } from "../api";
 
 vi.mock("../components/FileUpload", () => ({
 	FileUpload: ({ onUploaded }: { onUploaded: () => void }) => (
@@ -48,7 +48,7 @@ function renderDocuments() {
 	);
 }
 
-const baseDocuments = [
+const baseDocuments: Document[] = [
 	{
 		id: "doc-1",
 		filename: "invoice.pdf",

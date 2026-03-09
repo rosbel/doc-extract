@@ -58,7 +58,7 @@ When all retries are exhausted, the worker's `failed` event handler (`src/queue/
 
 **Decision: Document-level status enum + per-job audit trail.**
 
-Document status progresses through: `pending → classifying → extracting → completed` (or `failed` at any stage). This is tracked on the `documents` table directly (`src/db/schema.ts:18-25`).
+Document status progresses through: `pending → classifying → extracting → completed` (or `unclassified` / `failed` when the pipeline cannot produce a matched extracted result). This is tracked on the `documents` table directly (`src/db/schema.ts:18-25`).
 
 For detailed audit history, every LLM processing call creates a record in the `processingJobs` table (`src/db/schema.ts:73-86`) capturing:
 - Job type (classification or extraction)
@@ -75,10 +75,12 @@ The frontend polls a lightweight status endpoint (`GET /api/documents/:id/status
 
 `POST /api/documents/:id/reprocess` (`src/routes/documents.ts:152-176`) performs an atomic update:
 - Resets status to `pending`
-- Clears `extractedData`, `extractionConfidence`, `errorMessage`, and `schemaId`
+- Clears `extractedData`, `extractionConfidence`, `errorMessage`, `schemaId`, `schemaVersion`, and `schemaRevisionId`
 - Immediately enqueues a new classification job
 
 This triggers a full re-run through both pipeline phases. It's useful when schemas have been updated, when the LLM produced poor results, or after fixing upstream issues.
+
+Importantly, this is the only built-in way existing documents move onto a newer schema revision. Updating a schema does not retroactively rewrite stored `extractedData` for documents that were already processed.
 
 ### Duplicate Submissions
 
@@ -119,6 +121,8 @@ When a document enters the classification phase, the classifier (`src/services/c
 
 The classification uses OpenRouter's structured JSON output (`response_format`) with a defined schema for the response, ensuring type-safe results.
 
+When classification succeeds, the pipeline immediately resolves the latest saved schema revision for that schema and persists both `documents.schemaVersion` and `documents.schemaRevisionId`. Extraction then runs against that frozen revision snapshot, not against whatever the live schema row may become later.
+
 **Why LLM-based rather than rule-based?** Document types in the real world are varied and ambiguous. An LLM can understand semantic content (e.g., distinguishing an invoice from a purchase order even when they share similar fields) in ways that keyword matching cannot. The classification hints on each schema provide guidance without being rigid rules.
 
 ### Structured Output Production
@@ -156,6 +160,17 @@ There are zero hard-coded document types anywhere in the codebase. The system is
 - **AI-assisted schema creation** (`src/services/schema-recommender.ts`): Users can upload sample documents to `POST /api/recommendations`, and the LLM analyzes them to suggest appropriate schemas — complete with JSON Schema definitions, classification hints, and reasoning. These can be accepted directly via the frontend.
 
 This means a user can define a new document type (e.g., "Medical Lab Report") by creating a schema with the relevant fields, and all subsequently uploaded documents will be classified and extracted against it — no code changes required.
+
+### Schema Revision Semantics
+
+**Decision: schema updates append revisions; processed documents remain pinned to the revision they used.**
+
+Schema creation and every schema update write a new row to `schema_revisions` while also updating the live `extraction_schemas` row to the latest version. Restoring a prior revision does not mutate history in place; it creates a new current revision derived from the chosen snapshot.
+
+As a result:
+- New documents classify against the current active schema set and extract against the latest saved revision available at processing time.
+- Existing processed documents keep their current `extractedData`, `schemaVersion`, and `schemaRevisionId` until someone explicitly reprocesses them.
+- Historical documents therefore preserve the extraction semantics they were originally processed with, even after the live schema evolves.
 
 ---
 

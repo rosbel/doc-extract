@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type DocumentDetail as DocumentDetailType } from "../api";
 import { ProcessingStepper } from "../components/ProcessingStepper";
@@ -59,6 +59,26 @@ export function DocumentDetail() {
 	const isInProcessingState = doc
 		? PROCESSING_STATUSES.includes(doc.status)
 		: false;
+	const isUnclassified = doc?.status === "unclassified";
+	const classificationReasoning = useMemo(() => {
+		if (!doc) {
+			return null;
+		}
+
+		const latestClassificationJob = [...doc.jobs]
+			.filter((job) => job.jobType === "classification")
+			.sort((left, right) => {
+				const leftTime = Date.parse(left.startedAt ?? left.createdAt);
+				const rightTime = Date.parse(right.startedAt ?? right.createdAt);
+				return rightTime - leftTime;
+			})[0];
+		const metadata =
+			latestClassificationJob?.metadata &&
+			typeof latestClassificationJob.metadata === "object"
+				? (latestClassificationJob.metadata as Record<string, unknown>)
+				: null;
+		return typeof metadata?.reasoning === "string" ? metadata.reasoning : null;
+	}, [doc]);
 
 	// Stuck = in processing state but no jobs are actively running or pending
 	const hasActiveJob = doc?.jobs?.some(
@@ -96,6 +116,15 @@ export function DocumentDetail() {
 			setDeleting(false);
 		}
 	}, [deleting, doc, navigate]);
+
+	const handleCreateSchemaFromDocument = useCallback(() => {
+		if (!doc) return;
+		const confirmed = window.confirm(
+			`We couldn't find a matching schema for "${doc.filename}". Open AI Assist and use this document as an example?`,
+		);
+		if (!confirmed) return;
+		navigate(`/schemas/new?sourceDocumentId=${doc.id}`);
+	}, [doc, navigate]);
 
 	if (loading && !doc) return <p className="text-gray-500">Loading...</p>;
 	if (error) return <p className="text-red-600">{error}</p>;
@@ -200,7 +229,32 @@ export function DocumentDetail() {
 				</div>
 			)}
 
-			{doc.errorMessage && (
+			{isUnclassified && (
+				<div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+					<h2 className="font-semibold text-sm text-amber-700 uppercase">
+						No Matching Schema
+					</h2>
+					<p className="mt-1 text-sm text-amber-900">
+						We couldn&apos;t find a matching schema for this document. Would you
+						like to try creating one with AI Assist using this file as an
+						example?
+					</p>
+					{classificationReasoning && (
+						<p className="mt-2 text-sm text-amber-800">
+							Reasoning: {classificationReasoning}
+						</p>
+					)}
+					<button
+						type="button"
+						onClick={handleCreateSchemaFromDocument}
+						className="mt-4 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+					>
+						Create Schema With AI Assist
+					</button>
+				</div>
+			)}
+
+			{doc.errorMessage && !isUnclassified && (
 				<div className="bg-red-50 rounded-lg border border-red-200 p-4">
 					<h2 className="font-semibold text-sm text-red-600 uppercase">Error</h2>
 					<p className="mt-1 text-sm text-red-700">{doc.errorMessage}</p>

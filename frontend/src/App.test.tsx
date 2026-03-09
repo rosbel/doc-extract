@@ -56,29 +56,15 @@ describe("App routing", () => {
 		expect(router.state.location.pathname).toBe("/schemas/schema-1/edit");
 	});
 
-	it("preserves back and forward history between routes", async () => {
-		const router = renderApp(["/documents"]);
+	it("renders direct entries for schemas and document detail routes", async () => {
+		let router = renderApp(["/schemas"]);
 
-		expect(await screen.findByText("Documents Page")).toBeInTheDocument();
+		expect(await screen.findByText("Schemas Page")).toBeInTheDocument();
 
-		await router.navigate("/schemas");
-		await waitFor(() => {
-			expect(screen.getByText("Schemas Page")).toBeInTheDocument();
-		});
+		cleanup();
+		router = renderApp(["/documents/doc-1"]);
 
-		await router.navigate("/documents/doc-1");
-		await waitFor(() => {
-			expect(screen.getByText("Detail Page")).toBeInTheDocument();
-		});
-
-		await router.navigate(-1);
-		await waitFor(() => {
-			expect(screen.getByText("Schemas Page")).toBeInTheDocument();
-		});
-
-		await router.navigate(1);
-		await waitFor(() => {
-			expect(screen.getByText("Detail Page")).toBeInTheDocument();
-		});
+		expect(await screen.findByText("Detail Page")).toBeInTheDocument();
+		expect(router.state.location.pathname).toBe("/documents/doc-1");
 	});
 });

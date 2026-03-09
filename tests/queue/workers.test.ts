@@ -7,9 +7,31 @@ const {
 	enqueueExtractionMock,
 	indexDocumentMock,
 	documentUpdates,
+	activeSchemas,
 	mockDb,
 } = vi.hoisted(() => {
 		const updates: Array<Record<string, unknown>> = [];
+		const schemas = [
+			{
+				id: "schema-1",
+				name: "Invoice",
+				description: "Invoice schema",
+				version: 2,
+				jsonSchema: {
+					type: "object",
+					properties: {
+						total: {
+							type: "number",
+							description: "Total amount",
+						},
+					},
+				},
+				classificationHints: ["invoice"],
+				status: "active",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		];
 
 		return {
 			classifyDocumentMock: vi.fn(),
@@ -18,6 +40,7 @@ const {
 			enqueueExtractionMock: vi.fn(),
 			indexDocumentMock: vi.fn(),
 			documentUpdates: updates,
+			activeSchemas: schemas,
 			mockDb: {
 				update: vi.fn((table) => ({
 					set: (values: Record<string, unknown>) => ({
@@ -34,27 +57,7 @@ const {
 				})),
 				select: vi.fn(() => ({
 					from: () => ({
-						where: async () => [
-							{
-								id: "schema-1",
-								name: "Invoice",
-								description: "Invoice schema",
-								version: 2,
-								jsonSchema: {
-									type: "object",
-									properties: {
-										total: {
-											type: "number",
-											description: "Total amount",
-										},
-									},
-								},
-								classificationHints: ["invoice"],
-								status: "active",
-								createdAt: new Date(),
-								updatedAt: new Date(),
-							},
-						],
+						where: async () => schemas,
 					}),
 				})),
 				query: {
@@ -133,6 +136,25 @@ import { handleClassification, handleExtraction } from "../../src/queue/workers.
 describe("worker schema snapshots", () => {
 	beforeEach(() => {
 		documentUpdates.length = 0;
+		activeSchemas.splice(0, activeSchemas.length, {
+			id: "schema-1",
+			name: "Invoice",
+			description: "Invoice schema",
+			version: 2,
+			jsonSchema: {
+				type: "object",
+				properties: {
+					total: {
+						type: "number",
+						description: "Total amount",
+					},
+				},
+			},
+			classificationHints: ["invoice"],
+			status: "active",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
 		classifyDocumentMock.mockReset();
 		extractDocumentMock.mockReset();
 		getLatestSchemaRevisionMock.mockReset();
@@ -142,6 +164,7 @@ describe("worker schema snapshots", () => {
 
 	it("stores schemaVersion and schemaRevisionId after classification", async () => {
 		classifyDocumentMock.mockResolvedValue({
+			matched: true,
 			schemaId: "schema-1",
 			confidence: 0.94,
 			reasoning: "Invoice keywords matched",
@@ -164,6 +187,95 @@ describe("worker schema snapshots", () => {
 					update.values.schemaRevisionId === "revision-2",
 			),
 		).toBe(true);
+	});
+
+	it("marks a document unclassified when no schema matches", async () => {
+		classifyDocumentMock.mockResolvedValue({
+			matched: false,
+			schemaId: null,
+			confidence: 0.27,
+			reasoning: "This document does not fit the configured schemas.",
+		});
+		getLatestSchemaRevisionMock.mockResolvedValue({
+			id: "revision-2",
+			schemaId: "schema-1",
+			version: 2,
+		});
+
+		await handleClassification("doc-1");
+
+		expect(enqueueExtractionMock).not.toHaveBeenCalled();
+		expect(
+			documentUpdates.some(
+				(update) =>
+					update.values.status === "unclassified" &&
+					update.values.schemaId === null &&
+					update.values.schemaRevisionId === null,
+			),
+		).toBe(true);
+	});
+
+	it("skips active schemas without revisions and classifies against the eligible ones", async () => {
+		activeSchemas.splice(
+			0,
+			activeSchemas.length,
+			{
+				id: "schema-orphan",
+				name: "Orphan Schema",
+				description: "No revision yet",
+				version: 1,
+				jsonSchema: { type: "object", properties: {} },
+				classificationHints: ["orphan"],
+				status: "active",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "schema-2",
+				name: "Resume",
+				description: "Resume schema",
+				version: 1,
+				jsonSchema: { type: "object", properties: {} },
+				classificationHints: ["resume"],
+				status: "active",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		);
+		getLatestSchemaRevisionMock
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({
+				id: "revision-9",
+				schemaId: "schema-2",
+				version: 1,
+			});
+		classifyDocumentMock.mockResolvedValue({
+			matched: true,
+			schemaId: "schema-2",
+			confidence: 0.88,
+			reasoning: "Resume keywords matched",
+		});
+
+		await handleClassification("doc-1");
+
+		expect(classifyDocumentMock).toHaveBeenCalledWith(
+			"Invoice total due",
+			[
+				expect.objectContaining({
+					id: "schema-2",
+				}),
+			],
+		);
+		expect(enqueueExtractionMock).toHaveBeenCalledWith("doc-1", "revision-9");
+	});
+
+	it("fails clearly when no active schemas have saved revisions", async () => {
+		getLatestSchemaRevisionMock.mockResolvedValue(null);
+
+		await expect(handleClassification("doc-1")).rejects.toThrow(
+			"No active schemas with saved revisions are available for classification",
+		);
+		expect(classifyDocumentMock).not.toHaveBeenCalled();
 	});
 
 	it("extracts against the frozen schema revision snapshot", async () => {

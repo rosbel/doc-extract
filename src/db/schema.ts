@@ -24,6 +24,7 @@ export const documentStatusEnum = pgEnum("document_status", [
 	"classifying",
 	"extracting",
 	"completed",
+	"unclassified",
 	"failed",
 	"duplicate",
 ]);

@@ -27,6 +27,7 @@ export const schemaAssistRequestInput = z
 		prompt: z.string().trim().optional(),
 		schemaId: z.string().uuid().optional(),
 		hasFiles: z.boolean().optional().default(false),
+		documentIds: z.array(z.string().uuid()).optional().default([]),
 	})
 	.superRefine((value, ctx) => {
 		if (value.mode === "edit" && !value.schemaId) {
@@ -37,11 +38,15 @@ export const schemaAssistRequestInput = z
 			});
 		}
 
-		if (!value.prompt?.trim() && !value.hasFiles) {
+		if (
+			!value.prompt?.trim() &&
+			!value.hasFiles &&
+			value.documentIds.length === 0
+		) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
 				path: ["prompt"],
-				message: "Provide a prompt, files, or both",
+				message: "Provide a prompt, files, documentIds, or a combination",
 			});
 		}
 	});
@@ -53,6 +58,7 @@ export const documentQueryInput = z.object({
 			"classifying",
 			"extracting",
 			"completed",
+			"unclassified",
 			"failed",
 			"duplicate",
 		])

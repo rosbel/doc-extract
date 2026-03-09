@@ -6,7 +6,6 @@ import {
 	Outlet,
 	RouterProvider,
 	createMemoryRouter,
-	useNavigate,
 } from "react-router-dom";
 import { SchemaWorkbench } from "./SchemaWorkbench";
 import { api, type Schema } from "../api";
@@ -209,6 +208,7 @@ describe("SchemaWorkbench", () => {
 				prompt: "Build a contract schema",
 				schemaId: undefined,
 				files: [],
+				documentIds: [],
 			});
 			expect(createMock).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -246,6 +246,7 @@ describe("SchemaWorkbench", () => {
 				prompt: "",
 				schemaId: undefined,
 				files: [file],
+				documentIds: [],
 			});
 		});
 
@@ -329,6 +330,41 @@ describe("SchemaWorkbench", () => {
 			"Prioritize RSVP semantics",
 		);
 		expect(screen.getByText("rsvp.csv")).toBeInTheDocument();
+	});
+
+	it("uses a preloaded source document for AI assist without re-uploading", async () => {
+		assistMock.mockResolvedValue({
+			analysis: "Generated from the stored document sample.",
+			proposals: [],
+		});
+
+		renderWorkbench(
+			<SchemaWorkbench
+				assistantFirst
+				sourceDocument={{ id: "doc-99", filename: "brochure.pdf" }}
+				onSaved={vi.fn()}
+				onCancel={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("Loaded sample document")).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				"brochure.pdf will be included when you click Analyze Documents.",
+			),
+		).toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole("button", { name: "Analyze Documents" }));
+
+		await waitFor(() => {
+			expect(assistMock).toHaveBeenCalledWith({
+				mode: "create",
+				prompt: "",
+				schemaId: undefined,
+				files: [],
+				documentIds: ["doc-99"],
+			});
+		});
 	});
 
 	it("shows edit diffs, applies them, and can discard the suggestion", async () => {
@@ -541,20 +577,15 @@ describe("SchemaWorkbench", () => {
 			],
 		});
 		const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+		const onSaved = vi.fn();
 
-		function SaveAndNavigateWorkbench() {
-			const navigate = useNavigate();
-
-			return (
-				<SchemaWorkbench
-					assistantFirst
-					onSaved={() => navigate("/schemas")}
-					onCancel={vi.fn()}
-				/>
-			);
-		}
-
-		renderWorkbench(<SaveAndNavigateWorkbench />);
+		renderWorkbench(
+			<SchemaWorkbench
+				assistantFirst
+				onSaved={onSaved}
+				onCancel={vi.fn()}
+			/>,
+		);
 
 		fireEvent.change(screen.getByLabelText("Optional Guidance"), {
 			target: { value: "Build a contract schema" },
@@ -565,7 +596,9 @@ describe("SchemaWorkbench", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Use Draft" }));
 		fireEvent.click(screen.getByRole("button", { name: "Create Schema" }));
 
-		await screen.findByText("Schemas Route");
+		await waitFor(() => {
+			expect(onSaved).toHaveBeenCalled();
+		});
 		expect(confirmSpy).not.toHaveBeenCalled();
 	});
 });

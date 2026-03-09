@@ -1,10 +1,10 @@
 import { unlink } from "node:fs/promises";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Router } from "express";
 import multer from "multer";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
-import { extractionSchemas } from "../db/schema.js";
+import { documents, extractionSchemas } from "../db/schema.js";
 import { logger } from "../lib/logger.js";
 import { assistSchemaCreation, assistSchemaEdit } from "../services/schema-assistant.js";
 import { parseFileSafe } from "../services/file-parser.js";
@@ -42,6 +42,20 @@ async function cleanupUploadedFiles(files: Express.Multer.File[]) {
 	);
 }
 
+function parseDocumentIds(rawValue: unknown) {
+	if (Array.isArray(rawValue)) {
+		return rawValue.flatMap((value) =>
+			typeof value === "string" ? [value] : [],
+		);
+	}
+
+	if (typeof rawValue === "string") {
+		return [rawValue];
+	}
+
+	return [];
+}
+
 schemasRouter.post(
 	"/assist",
 	upload.array("files", 10),
@@ -55,6 +69,7 @@ schemasRouter.post(
 				schemaId:
 					typeof req.body.schemaId === "string" ? req.body.schemaId : undefined,
 				hasFiles: files.length > 0,
+				documentIds: parseDocumentIds(req.body.documentIds),
 			});
 
 			const hasPrompt = Boolean(input.prompt?.trim());
@@ -91,10 +106,47 @@ schemasRouter.post(
 				});
 			}
 
-			if (files.length > 0 && validDocuments.length === 0 && !hasPrompt) {
+			if (input.documentIds.length > 0) {
+				const storedDocuments = await db.query.documents.findMany({
+					where: inArray(documents.id, input.documentIds),
+				});
+				const storedDocumentMap = new Map(
+					storedDocuments.map((document) => [document.id, document]),
+				);
+
+				for (const documentId of input.documentIds) {
+					const storedDocument = storedDocumentMap.get(documentId);
+					if (!storedDocument) {
+						res.status(404).json({
+							error: `Document not found for schema assist: ${documentId}`,
+						});
+						return;
+					}
+
+					if (!storedDocument.rawText?.trim()) {
+						warnings.push({
+							filename: storedDocument.filename,
+							warning:
+								"Stored document has no extracted text yet and could not be used for AI assist.",
+						});
+						continue;
+					}
+
+					validDocuments.push({
+						filename: storedDocument.filename,
+						text: storedDocument.rawText,
+					});
+				}
+			}
+
+			if (
+				(files.length > 0 || input.documentIds.length > 0) &&
+				validDocuments.length === 0 &&
+				!hasPrompt
+			) {
 				res.status(422).json({
 					error:
-						"None of the uploaded files could be parsed. Please try different files or add a prompt.",
+						"None of the provided files or stored documents could be used. Please try different samples or add a prompt.",
 					warnings,
 				});
 				return;

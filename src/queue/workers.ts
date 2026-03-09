@@ -41,17 +41,77 @@ export async function handleClassification(documentId: string) {
 		});
 		if (!doc?.rawText) throw new Error("Document not found or has no text");
 
-		const schemas = await db
+		const activeSchemas = await db
 			.select()
 			.from(extractionSchemas)
 			.where(eq(extractionSchemas.status, "active"));
-		if (schemas.length === 0) throw new Error("No active schemas available");
+		if (activeSchemas.length === 0) {
+			throw new Error("No active schemas available");
+		}
 
-		const result = await classifyDocument(doc.rawText, schemas);
-		const revision = await getLatestSchemaRevision(db, result.schemaId);
+		const revisionEntries = await Promise.all(
+			activeSchemas.map(async (schema) => [
+				schema.id,
+				await getLatestSchemaRevision(db, schema.id),
+			] as const),
+		);
+		const revisionMap = new Map(revisionEntries);
+		const eligibleSchemas = activeSchemas.filter((schema) =>
+			revisionMap.has(schema.id) && revisionMap.get(schema.id),
+		);
+		const skippedSchemas = activeSchemas.filter(
+			(schema) => !revisionMap.get(schema.id),
+		);
+		if (skippedSchemas.length > 0) {
+			logger.warn("Skipping active schemas with no saved revision", {
+				schemas: skippedSchemas.map((schema) => ({
+					id: schema.id,
+					name: schema.name,
+				})),
+			});
+		}
+		if (eligibleSchemas.length === 0) {
+			throw new Error(
+				"No active schemas with saved revisions are available for classification",
+			);
+		}
+
+		const result = await classifyDocument(doc.rawText, eligibleSchemas);
+
+		if (!result.matched) {
+			await db
+				.update(documents)
+				.set({
+					status: "unclassified",
+					errorMessage: null,
+					schemaId: null,
+					schemaVersion: null,
+					schemaRevisionId: null,
+					updatedAt: new Date(),
+				})
+				.where(eq(documents.id, documentId));
+
+			await db
+				.update(processingJobs)
+				.set({
+					status: "completed",
+					completedAt: new Date(),
+					metadata: result as unknown as Record<string, unknown>,
+					errorMessage: null,
+				})
+				.where(eq(processingJobs.id, job.id));
+
+			logger.info("Classification completed with no matching schema", {
+				documentId,
+				confidence: result.confidence,
+			});
+			return;
+		}
+
+		const revision = result.schemaId ? revisionMap.get(result.schemaId) : null;
 		if (!revision) {
 			throw new Error(
-				`No revision found for classified schema "${result.schemaId}"`,
+				`No saved revision is available for classified schema "${result.schemaId}"`,
 			);
 		}
 

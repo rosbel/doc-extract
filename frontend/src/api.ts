@@ -25,6 +25,15 @@ export interface Schema {
 	updatedAt: string;
 }
 
+export type DocumentStatus =
+	| "pending"
+	| "classifying"
+	| "extracting"
+	| "completed"
+	| "unclassified"
+	| "failed"
+	| "duplicate";
+
 export interface SchemaRevision {
 	id: string;
 	schemaId: string;
@@ -46,7 +55,7 @@ export interface Document {
 	contentHash: string;
 	rawText: string | null;
 	storagePath: string;
-	status: string;
+	status: DocumentStatus;
 	schemaId: string | null;
 	schemaVersion: number | null;
 	schemaRevisionId: string | null;
@@ -64,7 +73,7 @@ export interface SearchResult {
 	id: string;
 	filename: string;
 	schemaId: string | null;
-	status: string;
+	status: DocumentStatus;
 	extractionConfidence: number | null;
 	score: number;
 	snippet: string;
@@ -169,6 +178,7 @@ export const api = {
 			prompt?: string;
 			schemaId?: string;
 			files?: File[];
+			documentIds?: string[];
 		}): Promise<SchemaAssistCreateResponse | SchemaAssistEditResponse> => {
 			const form = new FormData();
 			form.append("mode", data.mode);
@@ -180,6 +190,9 @@ export const api = {
 			}
 			for (const file of data.files ?? []) {
 				form.append("files", file);
+			}
+			for (const documentId of data.documentIds ?? []) {
+				form.append("documentIds", documentId);
 			}
 
 			const res = await fetch(`${BASE}/schemas/assist`, {
@@ -202,7 +215,7 @@ export const api = {
 		},
 		get: (id: string) => request<DocumentDetail>(`/documents/${id}`),
 		status: (id: string) =>
-			request<{ id: string; status: string; extractionConfidence: number | null; errorMessage: string | null }>(
+			request<{ id: string; status: DocumentStatus; extractionConfidence: number | null; errorMessage: string | null }>(
 				`/documents/${id}/status`,
 			),
 		upload: async (file: File) => {
@@ -224,12 +237,17 @@ export const api = {
 				throw new Error(body.error || `Delete failed: ${res.status}`);
 			}
 		},
-		stream: (id: string, onEvent: (data: { type: string; status?: string; extractionConfidence?: number | null; errorMessage?: string | null }) => void) => {
+		stream: (id: string, onEvent: (data: { type: string; status?: DocumentStatus; extractionConfidence?: number | null; errorMessage?: string | null }) => void) => {
 			const eventSource = new EventSource(`${BASE}/documents/${id}/stream`);
 			eventSource.onmessage = (event) => {
 				const data = JSON.parse(event.data);
 				onEvent(data);
-				if (data.type === "status" && (data.status === "completed" || data.status === "failed")) {
+				if (
+					data.type === "status" &&
+					(data.status === "completed" ||
+						data.status === "failed" ||
+						data.status === "unclassified")
+				) {
 					eventSource.close();
 				}
 				if (data.type === "timeout" || data.type === "error") {

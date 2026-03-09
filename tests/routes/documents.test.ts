@@ -13,6 +13,13 @@ describe("Document query validation", () => {
 		expect(result.limit).toBe(10);
 	});
 
+	it("should accept unclassified status", () => {
+		const result = documentQueryInput.parse({
+			status: "unclassified",
+		});
+		expect(result.status).toBe("unclassified");
+	});
+
 	it("should default page to 1 and limit to 20", () => {
 		const result = documentQueryInput.parse({});
 		expect(result.page).toBe(1);

@@ -45,6 +45,7 @@ describe("classifyDocument", () => {
 				{
 					message: {
 						content: JSON.stringify({
+							matched: true,
 							schemaId: "schema-1",
 							confidence: 0.95,
 							reasoning: "Contains invoice-related terms",
@@ -60,6 +61,7 @@ describe("classifyDocument", () => {
 		);
 
 		expect(result.schemaId).toBe("schema-1");
+		expect(result.matched).toBe(true);
 		expect(result.confidence).toBe(0.95);
 		expect(result.reasoning).toBeTruthy();
 		expect(mockCreate).toHaveBeenCalledOnce();
@@ -72,6 +74,7 @@ describe("classifyDocument", () => {
 				{
 					message: {
 						content: JSON.stringify({
+							matched: true,
 							schemaId: "schema-2",
 							confidence: 0.8,
 							reasoning: "Best guess",
@@ -97,6 +100,53 @@ describe("classifyDocument", () => {
 
 		await expect(classifyDocument("test doc", mockSchemas)).rejects.toThrow(
 			"No response from LLM",
+		);
+	});
+
+	it("accepts an explicit no-match result", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							matched: false,
+							schemaId: null,
+							confidence: 0.21,
+							reasoning: "The document does not resemble any provided schema.",
+						}),
+					},
+				},
+			],
+		});
+
+		const result = await classifyDocument("travel brochure", mockSchemas);
+
+		expect(result).toEqual({
+			matched: false,
+			schemaId: null,
+			confidence: 0.21,
+			reasoning: "The document does not resemble any provided schema.",
+		});
+	});
+
+	it("rejects an unknown non-null schema id", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							matched: true,
+							schemaId: "schema-999",
+							confidence: 0.66,
+							reasoning: "Looks close enough",
+						}),
+					},
+				},
+			],
+		});
+
+		await expect(classifyDocument("mystery document", mockSchemas)).rejects.toThrow(
+			'Classifier returned unknown schemaId "schema-999"',
 		);
 	});
 });
