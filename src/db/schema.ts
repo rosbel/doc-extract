@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+	index,
 	integer,
 	jsonb,
 	pgEnum,
@@ -77,6 +79,7 @@ export const documents = pgTable(
 		fileSize: integer("file_size").notNull(),
 		contentHash: text("content_hash").notNull(),
 		rawText: text("raw_text"),
+		searchText: text("search_text"),
 		storagePath: text("storage_path").notNull(),
 		status: documentStatusEnum("status").notNull().default("pending"),
 		schemaId: uuid("schema_id").references(() => extractionSchemas.id),
@@ -91,7 +94,13 @@ export const documents = pgTable(
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at").defaultNow().notNull(),
 	},
-	(table) => [uniqueIndex("content_hash_idx").on(table.contentHash)],
+	(table) => [
+		uniqueIndex("content_hash_idx").on(table.contentHash),
+		index("documents_search_text_tsv_idx").using(
+			"gin",
+			sql`to_tsvector('english', coalesce(${table.searchText}, ''))`,
+		),
+	],
 );
 
 export const processingJobs = pgTable("processing_jobs", {

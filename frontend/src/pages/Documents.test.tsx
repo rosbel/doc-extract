@@ -107,18 +107,21 @@ describe("Documents", () => {
 		vi.clearAllMocks();
 	});
 
-	it("renders the search form and keyword search results", async () => {
+	it("defaults to Smart Search and renders unified results", async () => {
 		searchMock.mockResolvedValue({
-			mode: "keyword",
+			mode: "hybrid",
+			degraded: false,
 			results: [
 				{
 					id: "doc-2",
 					filename: "invoice-result.pdf",
 					status: "completed",
-					extractedData: { vendor: "Acme" },
-					extractionConfidence: 0.88,
 					schemaId: "schema-1",
-					createdAt: "2026-03-09T12:00:00.000Z",
+					extractionConfidence: 0.88,
+					score: 0.91,
+					snippet: "Acme invoice for March consulting services",
+					matchReasons: ["Semantic match", "Exact field match"],
+					matchedFields: ["vendor"],
 				},
 			],
 		});
@@ -126,36 +129,40 @@ describe("Documents", () => {
 		renderDocuments();
 
 		await screen.findByText("invoice.pdf");
-		expect(screen.getByText("Search Documents")).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "Keyword" })).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "Semantic" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Smart Search" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Exact text" })).toBeInTheDocument();
 
 		fireEvent.change(screen.getByLabelText("Query"), {
 			target: { value: "invoice" },
 		});
 		fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
-		await screen.findByText('Showing 1 keyword result for "invoice"');
+		await screen.findByText('Showing 1 smart search result for "invoice"');
 		expect(searchMock).toHaveBeenCalledWith({
 			query: "invoice",
-			mode: "keyword",
+			mode: "hybrid",
 			limit: 10,
 		});
 		expect(screen.getByText("invoice-result.pdf")).toBeInTheDocument();
-		expect(screen.getByText(/Invoice \(schema-1/i)).toBeInTheDocument();
+		expect(screen.getByText("Semantic match")).toBeInTheDocument();
+		expect(screen.getByText("vendor")).toBeInTheDocument();
 	});
 
-	it("submits semantic search with a schema filter and opens document detail on click", async () => {
+	it("supports exact text search with a schema filter and opens document detail", async () => {
 		searchMock.mockResolvedValue({
-			mode: "semantic",
+			mode: "keyword",
+			degraded: false,
 			results: [
 				{
 					id: "doc-3",
-					score: 0.973,
-					metadata: {
-						filename: "semantic-result.pdf",
-						summary: "High-confidence invoice embedding match",
-					},
+					filename: "exact-match.pdf",
+					status: "completed",
+					schemaId: "schema-1",
+					extractionConfidence: 0.73,
+					score: 0.84,
+					snippet: "vendor Acme Corp total 42",
+					matchReasons: ["Exact field match", "Schema-filtered"],
+					matchedFields: ["vendor"],
 				},
 			],
 		});
@@ -167,31 +174,66 @@ describe("Documents", () => {
 		fireEvent.change(screen.getByLabelText("Query"), {
 			target: { value: "acme" },
 		});
-		fireEvent.click(screen.getByRole("button", { name: "Semantic" }));
+		fireEvent.click(screen.getByRole("button", { name: "Exact text" }));
 		fireEvent.change(screen.getByLabelText("Schema"), {
 			target: { value: "schema-1" },
 		});
 		fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
-		await screen.findByText('Showing 1 semantic result for "acme"');
+		await screen.findByText('Showing 1 exact text result for "acme"');
 		expect(searchMock).toHaveBeenCalledWith({
 			query: "acme",
-			mode: "semantic",
+			mode: "keyword",
 			limit: 10,
 			schemaId: "schema-1",
 		});
-		expect(screen.getByText("semantic-result.pdf")).toBeInTheDocument();
-		expect(screen.getByText("97.3%")).toBeInTheDocument();
+		expect(screen.getByText("84%")).toBeInTheDocument();
 
-		fireEvent.click(screen.getByText("semantic-result.pdf"));
+		fireEvent.click(screen.getByText("exact-match.pdf"));
 		expect(screen.getByTestId("location-display")).toHaveTextContent(
 			"/documents/doc-3",
 		);
 	});
 
+	it("shows a friendly fallback banner when Smart Search degrades to exact text", async () => {
+		searchMock.mockResolvedValue({
+			mode: "hybrid",
+			degraded: true,
+			degradedReason: "semantic_unavailable",
+			results: [
+				{
+					id: "doc-4",
+					filename: "fallback.pdf",
+					status: "completed",
+					schemaId: "schema-1",
+					extractionConfidence: 0.81,
+					score: 0.67,
+					snippet: "invoice fallback result",
+					matchReasons: ["Exact field match"],
+					matchedFields: ["invoiceNumber"],
+				},
+			],
+		});
+
+		renderDocuments();
+
+		await screen.findByText("invoice.pdf");
+
+		fireEvent.change(screen.getByLabelText("Query"), {
+			target: { value: "invoice" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+		await screen.findByText(
+			"Smart Search isn't available right now, so we're using exact text matches instead. Results may be narrower, but you can still search your documents.",
+		);
+		expect(screen.getByText('Showing 1 exact text fallback result for "invoice"')).toBeInTheDocument();
+	});
+
 	it("clears search state and returns to the document list", async () => {
 		searchMock.mockResolvedValue({
-			mode: "keyword",
+			mode: "hybrid",
+			degraded: false,
 			results: [],
 		});
 
@@ -204,13 +246,13 @@ describe("Documents", () => {
 		});
 		fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
-		await screen.findByText('Showing 0 keyword results for "invoice"');
-		expect(screen.getByText("No keyword matches found.")).toBeInTheDocument();
+		await screen.findByText('Showing 0 smart search results for "invoice"');
+		expect(screen.getByText("No matching documents found.")).toBeInTheDocument();
 
 		fireEvent.click(screen.getByRole("button", { name: "Clear" }));
 
 		await waitFor(() => {
-			expect(screen.queryByText("No keyword matches found.")).not.toBeInTheDocument();
+			expect(screen.queryByText("No matching documents found.")).not.toBeInTheDocument();
 		});
 		expect(screen.getByLabelText("Query")).toHaveValue("");
 		expect(screen.getByText("invoice.pdf")).toBeInTheDocument();
@@ -240,6 +282,6 @@ describe("Documents", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
 		await screen.findByText("Search backend unavailable");
-		expect(screen.getByText('Showing 0 keyword results for "invoice"')).toBeInTheDocument();
+		expect(screen.getByText('Showing 0 smart search results for "invoice"')).toBeInTheDocument();
 	});
 });

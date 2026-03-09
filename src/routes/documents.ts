@@ -71,6 +71,7 @@ documentsRouter.post("/", upload.single("file"), async (req, res, next) => {
 				fileSize: req.file.size,
 				contentHash,
 				rawText,
+				searchText: rawText,
 				storagePath: req.file.path,
 			})
 			.returning();
@@ -293,6 +294,7 @@ documentsRouter.post("/:id/reprocess", async (req, res, next) => {
 				schemaId: null,
 				schemaVersion: null,
 				schemaRevisionId: null,
+				searchText: sql`${documents.rawText}`,
 				updatedAt: new Date(),
 			})
 			.where(eq(documents.id, req.params.id))

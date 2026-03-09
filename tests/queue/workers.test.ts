@@ -188,10 +188,22 @@ describe("worker schema snapshots", () => {
 			"Invoice",
 		);
 		expect(indexDocumentMock).toHaveBeenCalledWith(
-			"doc-1",
-			"invoice.pdf",
-			{ total: 42 },
-			"schema-1",
+			expect.objectContaining({
+				documentId: "doc-1",
+				filename: "invoice.pdf",
+				rawText: "Invoice total due",
+				extractedData: { total: 42 },
+				schemaId: "schema-1",
+				schemaName: "Invoice",
+			}),
 		);
+		expect(
+			documentUpdates.some(
+				(update) =>
+					typeof update.values.searchText === "string" &&
+					update.values.searchText.includes("Invoice total due") &&
+					update.values.searchText.includes("total 42"),
+			),
+		).toBe(true);
 	});
 });

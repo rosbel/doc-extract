@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const queryMock = vi.fn();
+const upsertMock = vi.fn();
 const indexMock = vi.fn(() => ({
 	query: queryMock,
-	upsert: vi.fn(),
+	upsert: upsertMock,
 }));
 const embeddingsCreateMock = vi.fn();
 
@@ -21,7 +22,7 @@ vi.mock("../../src/lib/openrouter.js", () => ({
 	}),
 }));
 
-describe("searchDocument", () => {
+describe("vector store", () => {
 	beforeEach(() => {
 		vi.resetModules();
 		vi.stubEnv("PINECONE_API_KEY", "test-pinecone-key");
@@ -31,9 +32,14 @@ describe("searchDocument", () => {
 		});
 		queryMock.mockResolvedValue({
 			matches: [
-				{ id: "doc-1", score: 0.91, metadata: { filename: "invoice.pdf" } },
+				{
+					id: "doc-1:header",
+					score: 0.91,
+					metadata: { documentId: "doc-1", filename: "invoice.pdf" },
+				},
 			],
 		});
+		upsertMock.mockResolvedValue(undefined);
 	});
 
 	afterEach(() => {
@@ -46,7 +52,14 @@ describe("searchDocument", () => {
 			"../../src/services/vector-store.js"
 		);
 
-		const results = await searchDocument("invoice", 5, "schema-123");
+		const results = await searchDocument("invoice", 5, {
+			schemaId: "schema-123",
+			schemaName: "Invoice",
+			schemaJsonSchema: {
+				type: "object",
+				properties: { vendor: { type: "string" } },
+			},
+		});
 
 		expect(queryMock).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -55,7 +68,7 @@ describe("searchDocument", () => {
 			}),
 		);
 		expect(results).toHaveLength(1);
-		expect(results[0]?.id).toBe("doc-1");
+		expect(results[0]?.id).toBe("doc-1:header");
 	});
 
 	it("omits the filter when schemaId is not provided", async () => {
@@ -70,5 +83,36 @@ describe("searchDocument", () => {
 				filter: expect.anything(),
 			}),
 		);
+	});
+
+	it("indexes a header chunk and raw text chunks for each document", async () => {
+		const { indexDocument } = await import("../../src/services/vector-store.js");
+
+		await indexDocument({
+			documentId: "doc-1",
+			filename: "invoice.pdf",
+			rawText: "A".repeat(2600),
+			extractedData: { vendor: "Acme" },
+			schemaId: "schema-1",
+			schemaName: "Invoice",
+			schemaDescription: "Invoice schema",
+			schemaJsonSchema: {
+				type: "object",
+				properties: { vendor: { type: "string" } },
+			},
+		});
+
+		expect(upsertMock).toHaveBeenCalledTimes(1);
+		const upsertArg = upsertMock.mock.calls[0]?.[0];
+		expect(upsertArg).toHaveLength(4);
+		expect(upsertArg[0]).toMatchObject({
+			id: "doc-1:header",
+			metadata: expect.objectContaining({
+				documentId: "doc-1",
+				schemaId: "schema-1",
+				chunkType: "header",
+			}),
+		});
+		expect(upsertArg[1]?.id).toBe("doc-1:raw-0");
 	});
 });

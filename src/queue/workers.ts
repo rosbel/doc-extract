@@ -10,6 +10,7 @@ import {
 import { logger } from "../lib/logger.js";
 import { classifyDocument } from "../services/classifier.js";
 import { extractDocument } from "../services/extractor.js";
+import { buildSearchCorpus } from "../services/search-index.js";
 import { getLatestSchemaRevision } from "../services/schema-lifecycle.js";
 import { indexDocument } from "../services/vector-store.js";
 import { redisConnectionOpts } from "./index.js";
@@ -140,6 +141,14 @@ export async function handleExtraction(
 			revision.jsonSchema as Record<string, unknown>,
 			revision.name,
 		);
+		const searchText = buildSearchCorpus({
+			filename: doc.filename,
+			rawText: doc.rawText,
+			extractedData: result.extractedData,
+			schemaName: revision.name,
+			schemaDescription: revision.description,
+			schemaJsonSchema: revision.jsonSchema as Record<string, unknown>,
+		});
 
 		// Update document with extraction results
 		await db
@@ -148,6 +157,7 @@ export async function handleExtraction(
 				status: "completed",
 				extractedData: result.extractedData,
 				extractionConfidence: result.confidence,
+				searchText,
 				updatedAt: new Date(),
 			})
 			.where(eq(documents.id, documentId));
@@ -163,12 +173,16 @@ export async function handleExtraction(
 
 		// Index in Pinecone (best-effort)
 		try {
-			await indexDocument(
-				doc.id,
-				doc.filename,
-				result.extractedData,
-				revision.schemaId,
-			);
+			await indexDocument({
+				documentId: doc.id,
+				filename: doc.filename,
+				rawText: doc.rawText,
+				extractedData: result.extractedData,
+				schemaId: revision.schemaId,
+				schemaName: revision.name,
+				schemaDescription: revision.description,
+				schemaJsonSchema: revision.jsonSchema as Record<string, unknown>,
+			});
 		} catch (vecErr) {
 			logger.warn("Vector indexing failed (non-fatal)", {
 				documentId,

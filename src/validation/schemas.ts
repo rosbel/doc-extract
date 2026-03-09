@@ -65,6 +65,6 @@ export const documentQueryInput = z.object({
 export const searchInput = z.object({
 	query: z.string().min(1),
 	schemaId: z.string().uuid().optional(),
-	mode: z.enum(["keyword", "semantic"]).optional().default("keyword"),
+	mode: z.enum(["keyword", "semantic", "hybrid"]).optional().default("hybrid"),
 	limit: z.coerce.number().int().min(1).max(50).optional().default(10),
 });

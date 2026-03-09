@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentQueryInput } from "../../src/validation/schemas.js";
+import { documentQueryInput, searchInput } from "../../src/validation/schemas.js";
 
 describe("Document query validation", () => {
 	it("should accept valid query params", () => {
@@ -37,5 +37,12 @@ describe("Document query validation", () => {
 			schemaId: "550e8400-e29b-41d4-a716-446655440000",
 		});
 		expect(result.schemaId).toBe("550e8400-e29b-41d4-a716-446655440000");
+	});
+
+	it("defaults search mode to hybrid", () => {
+		const result = searchInput.parse({
+			query: "invoice",
+		});
+		expect(result.mode).toBe("hybrid");
 	});
 });

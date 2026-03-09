@@ -58,29 +58,18 @@ export interface Document {
 	updatedAt: string;
 }
 
-export type SearchMode = "keyword" | "semantic";
+export type SearchMode = "hybrid" | "keyword";
 
-export interface KeywordSearchResult {
+export interface SearchResult {
 	id: string;
 	filename: string;
-	status: string;
-	extractedData: Record<string, unknown> | null;
-	extractionConfidence: number | null;
 	schemaId: string | null;
-	createdAt: string;
-}
-
-export interface SemanticSearchMetadata {
-	filename?: string;
-	summary?: string;
-	schemaId?: string;
-	[key: string]: unknown;
-}
-
-export interface SemanticSearchResult {
-	id: string;
+	status: string;
+	extractionConfidence: number | null;
 	score: number;
-	metadata: SemanticSearchMetadata | null;
+	snippet: string;
+	matchReasons: string[];
+	matchedFields: string[];
 }
 
 export interface DocumentDetail extends Document {
@@ -136,17 +125,12 @@ export interface SearchRequest {
 	limit?: number;
 }
 
-export interface KeywordSearchResponse {
-	results: KeywordSearchResult[];
-	mode: "keyword";
+export interface SearchResponse {
+	results: SearchResult[];
+	mode: SearchMode;
+	degraded: boolean;
+	degradedReason?: "semantic_unavailable";
 }
-
-export interface SemanticSearchResponse {
-	results: SemanticSearchResult[];
-	mode: "semantic";
-}
-
-export type SearchResponse = KeywordSearchResponse | SemanticSearchResponse;
 
 export const api = {
 	schemas: {
