@@ -43,6 +43,31 @@ export interface Document {
 	updatedAt: string;
 }
 
+export type SearchMode = "keyword" | "semantic";
+
+export interface KeywordSearchResult {
+	id: string;
+	filename: string;
+	status: string;
+	extractedData: Record<string, unknown> | null;
+	extractionConfidence: number | null;
+	schemaId: string | null;
+	createdAt: string;
+}
+
+export interface SemanticSearchMetadata {
+	filename?: string;
+	summary?: string;
+	schemaId?: string;
+	[key: string]: unknown;
+}
+
+export interface SemanticSearchResult {
+	id: string;
+	score: number;
+	metadata: SemanticSearchMetadata | null;
+}
+
 export interface DocumentDetail extends Document {
 	schema: Schema | null;
 	jobs: Array<{
@@ -72,6 +97,25 @@ export interface RecommendationResponse {
 	analysis: string;
 	warnings?: Array<{ filename: string; warning: string }>;
 }
+
+export interface SearchRequest {
+	query: string;
+	mode: SearchMode;
+	schemaId?: string;
+	limit?: number;
+}
+
+export interface KeywordSearchResponse {
+	results: KeywordSearchResult[];
+	mode: "keyword";
+}
+
+export interface SemanticSearchResponse {
+	results: SemanticSearchResult[];
+	mode: "semantic";
+}
+
+export type SearchResponse = KeywordSearchResponse | SemanticSearchResponse;
 
 export const api = {
 	schemas: {
@@ -154,9 +198,14 @@ export const api = {
 			return res.json();
 		},
 	},
-	search: (query: string, mode = "keyword", limit = 10) =>
-		request<{ results: unknown[]; mode: string }>("/search", {
+	search: ({ query, mode, schemaId, limit = 10 }: SearchRequest) =>
+		request<SearchResponse>("/search", {
 			method: "POST",
-			body: JSON.stringify({ query, mode, limit }),
+			body: JSON.stringify({
+				query,
+				mode,
+				limit,
+				...(schemaId ? { schemaId } : {}),
+			}),
 		}),
 };
