@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type DocumentDetail as DocumentDetailType } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
+
+const PROCESSING_STATUSES = ["pending", "classifying", "extracting"];
 
 interface Props {
 	documentId: string;
@@ -11,8 +13,10 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 	const [doc, setDoc] = useState<DocumentDetailType | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [reprocessing, setReprocessing] = useState(false);
+	const [reprocessError, setReprocessError] = useState<string | null>(null);
 
-	const load = async () => {
+	const load = useCallback(async () => {
 		setLoading(true);
 		try {
 			const data = await api.documents.get(documentId);
@@ -22,18 +26,63 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [documentId]);
 
 	useEffect(() => {
 		load();
-	}, [documentId]);
+	}, [load]);
 
-	// Poll while processing
+	// Lightweight polling: fetch status only, full reload on status change
+	const docStatus = doc?.status;
+	const lastPolledStatusRef = useRef(docStatus);
+
 	useEffect(() => {
-		if (!doc || !["pending", "classifying", "extracting"].includes(doc.status)) return;
-		const interval = setInterval(load, 3000);
+		lastPolledStatusRef.current = docStatus;
+	}, [docStatus]);
+
+	useEffect(() => {
+		if (!docStatus || !PROCESSING_STATUSES.includes(docStatus)) return;
+
+		const interval = setInterval(async () => {
+			try {
+				const statusData = await api.documents.status(documentId);
+				if (statusData.status !== lastPolledStatusRef.current) {
+					lastPolledStatusRef.current = statusData.status;
+					load();
+				}
+			} catch {
+				// Silently ignore polling errors
+			}
+		}, 3000);
 		return () => clearInterval(interval);
-	}, [doc]);
+	}, [docStatus, documentId, load]);
+
+	const isInProcessingState = doc
+		? PROCESSING_STATUSES.includes(doc.status)
+		: false;
+
+	// Stuck = in processing state but no jobs are actively running or pending
+	const hasActiveJob = doc?.jobs?.some(
+		(j) => j.status === "running" || j.status === "pending"
+	) ?? false;
+	const isStuck = isInProcessingState && doc !== null && doc.jobs.length > 0 && !hasActiveJob;
+	const isProcessing = isInProcessingState && !isStuck;
+
+	const handleReprocess = useCallback(async () => {
+		if (reprocessing || !doc) return;
+		setReprocessing(true);
+		setReprocessError(null);
+		try {
+			await api.documents.reprocess(doc.id);
+			await load();
+		} catch (err) {
+			setReprocessError(
+				err instanceof Error ? err.message : "Failed to reprocess",
+			);
+		} finally {
+			setReprocessing(false);
+		}
+	}, [reprocessing, doc, load]);
 
 	if (loading && !doc) return <p className="text-gray-500">Loading...</p>;
 	if (error) return <p className="text-red-600">{error}</p>;
@@ -55,17 +104,50 @@ export function DocumentDetail({ documentId, onBack }: Props) {
 				</div>
 				<div className="flex items-center gap-3">
 					<StatusBadge status={doc.status} />
+					{isProcessing && !reprocessing && (
+						<span className="inline-flex items-center gap-1.5 text-sm text-blue-600">
+							<span className="relative flex h-2 w-2">
+								<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+								<span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+							</span>
+							In progress
+						</span>
+					)}
+					{isStuck && (
+						<span className="inline-flex items-center gap-1.5 text-sm text-amber-600">
+							<span className="relative flex h-2 w-2">
+								<span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+							</span>
+							Stalled
+						</span>
+					)}
 					<button
-						onClick={async () => {
-							await api.documents.reprocess(doc.id);
-							load();
-						}}
-						className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+						onClick={handleReprocess}
+						disabled={reprocessing}
+						className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
 					>
-						Reprocess
+						{reprocessing && (
+							<span className="h-3.5 w-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+						)}
+						{reprocessing ? "Reprocessing..." : "Reprocess"}
 					</button>
 				</div>
 			</div>
+
+			{reprocessError && (
+				<div className="bg-red-50 rounded-lg border border-red-200 p-4 flex justify-between items-start">
+					<div>
+						<h2 className="font-semibold text-sm text-red-600 uppercase">Reprocess Error</h2>
+						<p className="mt-1 text-sm text-red-700">{reprocessError}</p>
+					</div>
+					<button
+						onClick={() => setReprocessError(null)}
+						className="text-red-400 hover:text-red-600 text-lg leading-none"
+					>
+						&times;
+					</button>
+				</div>
+			)}
 
 			{doc.schema && (
 				<div className="bg-white rounded-lg border p-4">

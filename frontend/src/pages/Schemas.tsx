@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type Schema } from "../api";
 import { SchemaEditor } from "../components/SchemaEditor";
 
@@ -8,7 +8,7 @@ export function Schemas() {
 	const [creating, setCreating] = useState(false);
 	const [loading, setLoading] = useState(true);
 
-	const load = async () => {
+	const load = useCallback(async () => {
 		setLoading(true);
 		try {
 			const data = await api.schemas.list();
@@ -16,11 +16,20 @@ export function Schemas() {
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, []);
 
 	useEffect(() => {
 		load();
-	}, []);
+	}, [load]);
+
+	const handleArchive = useCallback(async (schemaId: string) => {
+		try {
+			await api.schemas.delete(schemaId);
+			load();
+		} catch (err) {
+			console.error("Failed to archive schema:", err);
+		}
+	}, [load]);
 
 	if (creating || editing) {
 		return (
@@ -87,10 +96,7 @@ export function Schemas() {
 										Edit
 									</button>
 									<button
-										onClick={async () => {
-											await api.schemas.delete(schema.id);
-											load();
-										}}
+										onClick={() => handleArchive(schema.id)}
 										className="text-sm text-red-600 hover:text-red-800"
 									>
 										Archive

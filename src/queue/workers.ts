@@ -62,6 +62,9 @@ async function handleClassification(documentId: string) {
 			.where(eq(processingJobs.id, job.id));
 
 		// Enqueue extraction
+		if (!result.schemaId) {
+			throw new Error("Classification succeeded but returned no schemaId");
+		}
 		await enqueueExtraction(documentId, result.schemaId);
 		logger.info("Classification complete, extraction enqueued", {
 			documentId,
@@ -203,12 +206,27 @@ export function createWorker() {
 		logger.info("Job completed", { jobId: job.id });
 	});
 
-	worker.on("failed", (job, err) => {
+	worker.on("failed", async (job, err) => {
 		logger.error("Job failed", {
 			jobId: job?.id,
 			error: err.message,
 			attempt: job?.attemptsMade,
 		});
+
+		// Safety net: ensure document is marked failed when all retries exhausted
+		if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+			try {
+				await db
+					.update(documents)
+					.set({ status: "failed", errorMessage: err.message, updatedAt: new Date() })
+					.where(eq(documents.id, job.data.documentId));
+			} catch (dbErr) {
+				logger.error("Failed to mark document as failed after retry exhaustion", {
+					documentId: job.data.documentId,
+					error: dbErr instanceof Error ? dbErr.message : "Unknown",
+				});
+			}
+		}
 	});
 
 	return worker;

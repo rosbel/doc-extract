@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { api, type SchemaRecommendation, type RecommendationResponse } from "../api";
 
 type State = "input" | "loading" | "results";
@@ -87,6 +87,19 @@ export function Recommendations() {
 		setState("input");
 	};
 
+	// Compute visible recommendations with original indices in a single pass
+	const visibleRecs = useMemo(() => {
+		if (!result) return [];
+		return result.recommendations.reduce<
+			Array<{ rec: SchemaRecommendation; originalIndex: number }>
+		>((acc, rec, i) => {
+			if (!dismissed.has(i)) {
+				acc.push({ rec, originalIndex: i });
+			}
+			return acc;
+		}, []);
+	}, [result, dismissed]);
+
 	if (state === "loading") {
 		return (
 			<div className="space-y-6">
@@ -101,10 +114,6 @@ export function Recommendations() {
 	}
 
 	if (state === "results" && result) {
-		const visibleRecs = result.recommendations.filter(
-			(_, i) => !dismissed.has(i),
-		);
-
 		return (
 			<div className="space-y-6">
 				<div className="flex justify-between items-center">
@@ -127,13 +136,12 @@ export function Recommendations() {
 					<p className="text-gray-500">All recommendations have been handled.</p>
 				) : (
 					<div className="grid gap-4">
-						{result.recommendations.map((rec, i) => {
-							if (dismissed.has(i)) return null;
-							const isAccepted = accepted.has(i);
+						{visibleRecs.map(({ rec, originalIndex }) => {
+							const isAccepted = accepted.has(originalIndex);
 
 							return (
 								<div
-									key={i}
+									key={originalIndex}
 									className={`bg-white rounded-lg border p-4 shadow-sm ${isAccepted ? "border-green-300 bg-green-50" : ""}`}
 								>
 									<div className="flex justify-between items-start">
@@ -153,13 +161,13 @@ export function Recommendations() {
 										{!isAccepted && (
 											<div className="flex gap-2 ml-4">
 												<button
-													onClick={() => acceptRecommendation(rec, i)}
+													onClick={() => acceptRecommendation(rec, originalIndex)}
 													className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
 												>
 													Accept
 												</button>
 												<button
-													onClick={() => dismissRecommendation(i)}
+													onClick={() => dismissRecommendation(originalIndex)}
 													className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
 												>
 													Dismiss
@@ -172,7 +180,7 @@ export function Recommendations() {
 										{rec.reasoning}
 									</p>
 
-									{rec.matchingDocuments.length > 0 && (
+									{rec.matchingDocuments?.length > 0 && (
 										<div className="mt-2">
 											<span className="text-xs text-gray-500">
 												Matching documents:{" "}

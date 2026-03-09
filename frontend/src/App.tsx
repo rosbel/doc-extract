@@ -1,14 +1,34 @@
-import { useState } from "react";
-import { DocumentDetail } from "./pages/DocumentDetail";
-import { Documents } from "./pages/Documents";
-import { Recommendations } from "./pages/Recommendations";
-import { Schemas } from "./pages/Schemas";
+import { lazy, Suspense, useCallback, useState } from "react";
+
+const Documents = lazy(() =>
+	import("./pages/Documents").then((m) => ({ default: m.Documents })),
+);
+const Schemas = lazy(() =>
+	import("./pages/Schemas").then((m) => ({ default: m.Schemas })),
+);
+const Recommendations = lazy(() =>
+	import("./pages/Recommendations").then((m) => ({
+		default: m.Recommendations,
+	})),
+);
+const DocumentDetail = lazy(() =>
+	import("./pages/DocumentDetail").then((m) => ({
+		default: m.DocumentDetail,
+	})),
+);
 
 type Page = "documents" | "schemas" | "recommendations" | "document-detail";
 
 export default function App() {
 	const [page, setPage] = useState<Page>("documents");
 	const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+
+	const onSelectDocument = useCallback((id: string) => {
+		setSelectedDocId(id);
+		setPage("document-detail");
+	}, []);
+
+	const onBack = useCallback(() => setPage("documents"), []);
 
 	return (
 		<div className="min-h-screen">
@@ -37,22 +57,19 @@ export default function App() {
 			</nav>
 
 			<main className="max-w-6xl mx-auto px-4 py-8">
-				{page === "documents" && (
-					<Documents
-						onSelectDocument={(id) => {
-							setSelectedDocId(id);
-							setPage("document-detail");
-						}}
-					/>
-				)}
-				{page === "schemas" && <Schemas />}
-				{page === "recommendations" && <Recommendations />}
-				{page === "document-detail" && selectedDocId && (
-					<DocumentDetail
-						documentId={selectedDocId}
-						onBack={() => setPage("documents")}
-					/>
-				)}
+				<Suspense fallback={<p>Loading...</p>}>
+					{page === "documents" && (
+						<Documents onSelectDocument={onSelectDocument} />
+					)}
+					{page === "schemas" && <Schemas />}
+					{page === "recommendations" && <Recommendations />}
+					{page === "document-detail" && selectedDocId && (
+						<DocumentDetail
+							documentId={selectedDocId}
+							onBack={onBack}
+						/>
+					)}
+				</Suspense>
 			</main>
 		</div>
 	);

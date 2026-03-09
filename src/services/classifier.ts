@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { logger } from "../lib/logger.js";
 import { getOpenRouterClient } from "../lib/openrouter.js";
+import { parseLLMResponse } from "../lib/parse-llm-response.js";
 import type { ExtractionSchema } from "../types/index.js";
 
 const MAX_TEXT_LENGTH = 8000;
@@ -30,7 +31,9 @@ export async function classifyDocument(
 		messages: [
 			{
 				role: "system",
-				content: `You are a document classifier. Given document text and a list of schemas, determine which schema best matches the document. Respond with the schema ID, a confidence score (0-1), and brief reasoning.`,
+				content: `You are a document classifier. Given document text and a list of schemas, determine which schema best matches the document. Respond with the schema ID, a confidence score (0-1), and brief reasoning.
+
+IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or after the JSON.`,
 			},
 			{
 				role: "user",
@@ -70,7 +73,27 @@ export async function classifyDocument(
 		throw new Error("No response from LLM for classification");
 	}
 
-	const result = JSON.parse(content) as ClassificationResult;
+	const result = parseLLMResponse<ClassificationResult>(content);
+
+	// Handle snake_case variant from LLM
+	const raw = result as unknown as Record<string, unknown>;
+	if (!result.schemaId && raw.schema_id) {
+		result.schemaId = raw.schema_id as string;
+	}
+
+	if (!result.schemaId || typeof result.schemaId !== "string") {
+		throw new Error(
+			`Classifier returned invalid schemaId: ${JSON.stringify(result.schemaId)}`,
+		);
+	}
+
+	const validIds = new Set(schemas.map((s) => s.id));
+	if (!validIds.has(result.schemaId)) {
+		throw new Error(
+			`Classifier returned unknown schemaId "${result.schemaId}". Valid IDs: ${[...validIds].join(", ")}`,
+		);
+	}
+
 	logger.info("Document classified", {
 		schemaId: result.schemaId,
 		confidence: result.confidence,

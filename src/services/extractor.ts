@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { logger } from "../lib/logger.js";
 import { getOpenRouterClient } from "../lib/openrouter.js";
+import { parseLLMResponse } from "../lib/parse-llm-response.js";
 
 export interface ExtractionResult {
 	extractedData: Record<string, unknown>;
@@ -66,7 +67,9 @@ export async function extractDocument(
 		messages: [
 			{
 				role: "system",
-				content: `You are a data extraction assistant. Extract structured data from the document according to the "${schemaName}" schema. Be precise and extract only what is present in the document. Set confidence based on how well the document matches the schema.`,
+				content: `You are a data extraction assistant. Extract structured data from the document according to the "${schemaName}" schema. Be precise and extract only what is present in the document. Set confidence based on how well the document matches the schema.
+
+IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or after the JSON.`,
 			},
 			{
 				role: "user",
@@ -88,7 +91,43 @@ export async function extractDocument(
 		throw new Error("No response from LLM for extraction");
 	}
 
-	const result = JSON.parse(content) as ExtractionResult;
+	const result = parseLLMResponse<ExtractionResult>(content);
+
+	// Handle snake_case variants from LLM
+	const raw = result as unknown as Record<string, unknown>;
+	if (!result.extractedData && raw.extracted_data) {
+		result.extractedData = raw.extracted_data as Record<string, unknown>;
+	}
+	if (result.confidence === undefined && raw.confidence_score !== undefined) {
+		result.confidence = raw.confidence_score as number;
+	}
+
+	// Handle LLM ignoring envelope: data fields returned flat at top level
+	if (!result.extractedData && raw.confidence !== undefined) {
+		const { confidence, ...dataFields } = raw;
+		if (Object.keys(dataFields).length > 0) {
+			logger.warn("LLM returned flat response without extractedData envelope, reconstructing");
+			result.extractedData = dataFields as Record<string, unknown>;
+			result.confidence = confidence as number;
+		}
+	}
+
+	if (
+		!result.extractedData ||
+		typeof result.extractedData !== "object" ||
+		Array.isArray(result.extractedData)
+	) {
+		throw new Error(
+			`Extractor returned invalid extractedData: ${JSON.stringify(result.extractedData)}`,
+		);
+	}
+
+	if (typeof result.confidence !== "number" || isNaN(result.confidence)) {
+		throw new Error(
+			`Extractor returned invalid confidence: ${JSON.stringify(result.confidence)}`,
+		);
+	}
+
 	logger.info("Document extracted", {
 		schemaName,
 		confidence: result.confidence,

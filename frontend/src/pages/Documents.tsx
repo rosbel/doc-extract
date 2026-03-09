@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Document } from "../api";
 import { FileUpload } from "../components/FileUpload";
 import { StatusBadge } from "../components/StatusBadge";
+
+const PROCESSING_STATUSES = ["pending", "classifying", "extracting"];
 
 interface Props {
 	onSelectDocument: (id: string) => void;
@@ -12,6 +14,8 @@ export function Documents({ onSelectDocument }: Props) {
 	const [total, setTotal] = useState(0);
 	const [page, setPage] = useState(1);
 	const [loading, setLoading] = useState(true);
+	const docsRef = useRef(docs);
+	docsRef.current = docs;
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -28,16 +32,53 @@ export function Documents({ onSelectDocument }: Props) {
 		load();
 	}, [load]);
 
-	// Poll for status updates on in-progress documents
-	useEffect(() => {
-		const inProgress = docs.filter((d) =>
-			["pending", "classifying", "extracting"].includes(d.status),
+	// Lightweight polling: only fetch status for in-progress docs
+	const pollStatuses = useCallback(async () => {
+		const currentDocs = docsRef.current;
+		const inProgress = currentDocs.filter((d) =>
+			PROCESSING_STATUSES.includes(d.status),
 		);
 		if (inProgress.length === 0) return;
 
-		const interval = setInterval(load, 3000);
+		const statuses = await Promise.all(
+			inProgress.map((d) => api.documents.status(d.id)),
+		);
+
+		let needsFullReload = false;
+		setDocs((prev) =>
+			prev.map((doc) => {
+				const updated = statuses.find((s) => s.id === doc.id);
+				if (!updated) return doc;
+				if (updated.status !== doc.status) {
+					if (!PROCESSING_STATUSES.includes(updated.status)) {
+						needsFullReload = true;
+					}
+					return {
+						...doc,
+						status: updated.status,
+						extractionConfidence: updated.extractionConfidence,
+						errorMessage: updated.errorMessage,
+					};
+				}
+				return doc;
+			}),
+		);
+
+		if (needsFullReload) {
+			load();
+		}
+	}, [load]);
+
+	// Poll for status updates on in-progress documents
+	useEffect(() => {
+		const inProgress = docs.filter((d) =>
+			PROCESSING_STATUSES.includes(d.status),
+		);
+		if (inProgress.length === 0) return;
+
+		const interval = setInterval(pollStatuses, 3000);
 		return () => clearInterval(interval);
-	}, [docs, load]);
+	}, [docs, pollStatuses]);
 
 	return (
 		<div className="space-y-6">
