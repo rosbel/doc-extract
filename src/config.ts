@@ -3,6 +3,15 @@ import "dotenv/config";
 export const config = {
 	port: Number(process.env.PORT) || 3001,
 	nodeEnv: process.env.NODE_ENV || "development",
+	rateLimit: {
+		apiWindowMs: Number(process.env.API_RATE_LIMIT_WINDOW_MS) || 60 * 1000,
+		apiRequestsPerWindow:
+			Number(process.env.API_RATE_LIMIT_REQUESTS_PER_WINDOW) || 100,
+		documentUploadWindowMs:
+			Number(process.env.DOCUMENT_UPLOAD_RATE_LIMIT_WINDOW_MS) || 60 * 1000,
+		documentUploadsPerWindow:
+			Number(process.env.DOCUMENT_UPLOAD_RATE_LIMIT_REQUESTS_PER_WINDOW) || 20,
+	},
 	adminToken: process.env.ADMIN_TOKEN || "",
 	adminSecurity: {
 		maxFailedAttempts: Number(process.env.ADMIN_MAX_FAILED_ATTEMPTS) || 5,
@@ -25,5 +34,6 @@ export const config = {
 	upload: {
 		dir: process.env.UPLOAD_DIR || "./uploads",
 		maxFileSize: Number(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024,
+		maxFilesPerBatch: Number(process.env.MAX_FILES_PER_UPLOAD_BATCH) || 10,
 	},
 } as const;

@@ -59,7 +59,7 @@ pnpm dev:all
 ## Usage
 
 1. **Create a schema** — Define it manually or use AI assist from prompts and sample documents
-2. **Upload a document** — PDF, DOCX, TXT, CSV, JSON, or Markdown
+2. **Upload one or more documents** — PDF, DOCX, TXT, CSV, JSON, or Markdown
 3. **Watch processing** — Status transitions: pending → classifying → extracting → completed (or `unclassified` / `failed` when processing cannot produce a matching extracted result)
 4. **View results** — Extracted structured data with confidence scores
 5. **Search** — Smart Search blends semantic retrieval with exact-match signals, with exact-text fallback when vectors are unavailable
@@ -82,7 +82,8 @@ pnpm dev:all
 ### Documents
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/documents` | Upload document (multipart) |
+| POST | `/api/documents` | Upload a single document (multipart `file`) |
+| POST | `/api/documents/batch` | Upload multiple documents (multipart `files`) |
 | GET | `/api/documents` | List with filtering/pagination |
 | GET | `/api/documents/:id` | Detail with schema + jobs |
 | GET | `/api/documents/:id/status` | Lightweight status poll |
@@ -113,6 +114,8 @@ pnpm dev:all
 4. **JSONB for extracted data** — Supports querying on dynamic structures without schema migrations.
 5. **BullMQ** — Production-grade job queue with retries, rate limiting, and stalled job recovery.
 6. **Processing jobs as audit trail** — Full history of every LLM call with timing and error details.
+
+Document read endpoints under `/api/documents` are exempt from HTTP rate limiting so list/detail/polling traffic does not interfere with upload workflows. Upload mutations remain rate-limited separately.
 
 ## Technology Choices And Comfort Level
 

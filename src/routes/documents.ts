@@ -2,6 +2,7 @@ import { readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import multer from "multer";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
@@ -11,14 +12,56 @@ import { hashBuffer } from "../lib/hashing.js";
 import { logger } from "../lib/logger.js";
 import { enqueueClassification } from "../queue/jobs.js";
 import { parseFile } from "../services/file-parser.js";
+import type { Document } from "../types/index.js";
 import { documentQueryInput } from "../validation/schemas.js";
 
 const upload = multer({
 	dest: config.upload.dir,
 	limits: { fileSize: config.upload.maxFileSize },
 });
+const batchUpload = multer({
+	dest: config.upload.dir,
+	limits: {
+		fileSize: config.upload.maxFileSize,
+		files: config.upload.maxFilesPerBatch,
+	},
+});
+const uploadLimiter = rateLimit({
+	windowMs: config.rateLimit.documentUploadWindowMs,
+	limit: config.rateLimit.documentUploadsPerWindow,
+	standardHeaders: "draft-7",
+	legacyHeaders: false,
+	message: { error: "Too many uploads, please try again later" },
+});
 
 export const documentsRouter = Router();
+
+type UploadResult =
+	| {
+			status: "accepted";
+			document: Document;
+	  }
+	| {
+			status: "duplicate";
+			existingDocumentId?: string;
+	  };
+
+type BatchUploadResult =
+	| {
+			filename: string;
+			status: "accepted";
+			document: Document;
+	  }
+	| {
+			filename: string;
+			status: "duplicate";
+			existingDocumentId?: string;
+	  }
+	| {
+			filename: string;
+			status: "failed";
+			error: string;
+	  };
 
 async function cleanupUpload(filePath: string) {
 	try {
@@ -31,53 +74,44 @@ async function cleanupUpload(filePath: string) {
 	}
 }
 
-// Upload document
-documentsRouter.post("/", upload.single("file"), async (req, res, next) => {
-	let shouldCleanupUpload = Boolean(req.file);
+async function ingestUploadedFile(
+	file: Express.Multer.File,
+): Promise<UploadResult> {
+	let shouldCleanupUpload = true;
 	let contentHash: string | undefined;
 
 	try {
-		if (!req.file) {
-			res.status(400).json({ error: "No file uploaded" });
-			return;
-		}
-
-		const fileBuffer = await readFile(req.file.path);
+		const fileBuffer = await readFile(file.path);
 		contentHash = hashBuffer(fileBuffer);
 
-		// Check for duplicate
 		const existing = await db.query.documents.findFirst({
 			where: eq(documents.contentHash, contentHash),
 		});
 		if (existing) {
-			await cleanupUpload(req.file.path);
+			await cleanupUpload(file.path);
 			shouldCleanupUpload = false;
-			res.status(409).json({
-				error: "Duplicate document",
+			return {
+				status: "duplicate",
 				existingDocumentId: existing.id,
-			});
-			return;
+			};
 		}
 
-		// Extract text
-		const rawText = await parseFile(req.file.path, req.file.mimetype);
+		const rawText = await parseFile(file.path, file.mimetype);
 
-		// Store document
 		const [doc] = await db
 			.insert(documents)
 			.values({
-				filename: req.file.originalname,
-				mimeType: req.file.mimetype,
-				fileSize: req.file.size,
+				filename: file.originalname,
+				mimeType: file.mimetype,
+				fileSize: file.size,
 				contentHash,
 				rawText,
 				searchText: rawText,
-				storagePath: req.file.path,
+				storagePath: file.path,
 			})
 			.returning();
 		shouldCleanupUpload = false;
 
-		// Enqueue classification
 		try {
 			await enqueueClassification(doc.id);
 		} catch (err) {
@@ -97,35 +131,114 @@ documentsRouter.post("/", upload.single("file"), async (req, res, next) => {
 		}
 		logger.info("Document uploaded and enqueued", { documentId: doc.id });
 
-		res.status(201).json(doc);
+		return { status: "accepted", document: doc };
 	} catch (err) {
 		if (isDuplicateKeyError(err)) {
-			if (req.file && shouldCleanupUpload) {
-				await cleanupUpload(req.file.path);
+			if (shouldCleanupUpload) {
+				await cleanupUpload(file.path);
 				shouldCleanupUpload = false;
 			}
 
-			const duplicate = req.file
-				? await db.query.documents.findFirst({
-						where: eq(documents.contentHash, contentHash ?? ""),
-					})
-				: null;
+			const duplicate = await db.query.documents.findFirst({
+				where: eq(documents.contentHash, contentHash ?? ""),
+			});
+			return {
+				status: "duplicate",
+				existingDocumentId: duplicate?.id,
+			};
+		}
 
+		if (shouldCleanupUpload) {
+			await cleanupUpload(file.path);
+			shouldCleanupUpload = false;
+		}
+
+		throw err;
+	}
+}
+
+function buildBatchSummary(results: BatchUploadResult[]) {
+	return {
+		accepted: results.filter((result) => result.status === "accepted").length,
+		duplicate: results.filter((result) => result.status === "duplicate").length,
+		failed: results.filter((result) => result.status === "failed").length,
+		total: results.length,
+	};
+}
+
+documentsRouter.post("/", uploadLimiter, upload.single("file"), async (req, res, next) => {
+	try {
+		if (!req.file) {
+			res.status(400).json({ error: "No file uploaded" });
+			return;
+		}
+
+		const result = await ingestUploadedFile(req.file);
+		if (result.status === "duplicate") {
 			res.status(409).json({
 				error: "Duplicate document",
-				existingDocumentId: duplicate?.id,
+				existingDocumentId: result.existingDocumentId,
 			});
 			return;
 		}
 
-		if (req.file && shouldCleanupUpload) {
-			await cleanupUpload(req.file.path);
-			shouldCleanupUpload = false;
-		}
-
+		res.status(201).json(result.document);
+	} catch (err) {
 		next(err);
 	}
 });
+
+documentsRouter.post(
+	"/batch",
+	uploadLimiter,
+	batchUpload.array("files", config.upload.maxFilesPerBatch),
+	async (req, res, next) => {
+		try {
+			const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+			if (files.length === 0) {
+				res.status(400).json({ error: "No files uploaded" });
+				return;
+			}
+
+			const results: BatchUploadResult[] = [];
+
+			for (const file of files) {
+				try {
+					const result = await ingestUploadedFile(file);
+					if (result.status === "accepted") {
+						results.push({
+							filename: file.originalname,
+							status: "accepted",
+							document: result.document,
+						});
+					} else {
+						results.push({
+							filename: file.originalname,
+							status: "duplicate",
+							existingDocumentId: result.existingDocumentId,
+						});
+					}
+				} catch (err) {
+					results.push({
+						filename: file.originalname,
+						status: "failed",
+						error:
+							err instanceof Error
+								? err.message
+								: "Failed to upload document",
+					});
+				}
+			}
+
+			const summary = buildBatchSummary(results);
+			const statusCode = summary.accepted === summary.total ? 201 : 207;
+
+			res.status(statusCode).json({ results, summary });
+		} catch (err) {
+			next(err);
+		}
+	},
+);
 
 // List documents with filtering/pagination
 documentsRouter.get("/", async (req, res, next) => {

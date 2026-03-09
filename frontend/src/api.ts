@@ -134,6 +134,24 @@ export interface Document {
 	updatedAt: string;
 }
 
+export interface DocumentBatchUploadResult {
+	filename: string;
+	status: "accepted" | "duplicate" | "failed";
+	document?: Document;
+	existingDocumentId?: string;
+	error?: string;
+}
+
+export interface DocumentBatchUploadResponse {
+	results: DocumentBatchUploadResult[];
+	summary: {
+		accepted: number;
+		duplicate: number;
+		failed: number;
+		total: number;
+	};
+}
+
 export type SearchMode = "hybrid" | "keyword";
 
 export interface SearchResult {
@@ -384,6 +402,21 @@ export const api = {
 				throw new Error(body.error || `Upload failed: ${res.status}`);
 			}
 			return res.json() as Promise<Document>;
+		},
+		uploadBatch: async (files: File[]) => {
+			const form = new FormData();
+			for (const file of files) {
+				form.append("files", file);
+			}
+			const res = await fetch(`${BASE}/documents/batch`, {
+				method: "POST",
+				body: form,
+			});
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				throw new Error(body.error || `Upload failed: ${res.status}`);
+			}
+			return res.json() as Promise<DocumentBatchUploadResponse>;
 		},
 		reprocess: (id: string) =>
 			request<Document>(`/documents/${id}/reprocess`, { method: "POST" }),

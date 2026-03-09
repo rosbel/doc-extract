@@ -1,17 +1,23 @@
 import { useCallback, useState } from "react";
-import { api } from "../api";
+import { api, type DocumentBatchUploadResponse } from "../api";
 
 export function FileUpload({ onUploaded }: { onUploaded: () => void }) {
 	const [dragging, setDragging] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [lastResult, setLastResult] = useState<DocumentBatchUploadResponse | null>(
+		null,
+	);
 
-	const handleFile = useCallback(
-		async (file: File) => {
+	const handleFiles = useCallback(
+		async (files: File[]) => {
+			if (files.length === 0) return;
 			setUploading(true);
 			setError(null);
+			setLastResult(null);
 			try {
-				await api.documents.upload(file);
+				const result = await api.documents.uploadBatch(files);
+				setLastResult(result);
 				onUploaded();
 			} catch (err) {
 				setError(err instanceof Error ? err.message : "Upload failed");
@@ -26,10 +32,12 @@ export function FileUpload({ onUploaded }: { onUploaded: () => void }) {
 		(e: React.DragEvent) => {
 			e.preventDefault();
 			setDragging(false);
-			const file = e.dataTransfer.files[0];
-			if (file) handleFile(file);
+			const files = Array.from(e.dataTransfer.files);
+			if (files.length > 0) {
+				void handleFiles(files);
+			}
 		},
-		[handleFile],
+		[handleFiles],
 	);
 
 	return (
@@ -47,19 +55,52 @@ export function FileUpload({ onUploaded }: { onUploaded: () => void }) {
 			<input
 				type="file"
 				id="file-upload"
+				multiple
 				className="hidden"
 				onChange={(e) => {
-					const file = e.target.files?.[0];
-					if (file) handleFile(file);
+					const files = Array.from(e.target.files ?? []);
+					if (files.length > 0) {
+						void handleFiles(files);
+					}
+					e.target.value = "";
 				}}
 			/>
 			<label htmlFor="file-upload" className="cursor-pointer">
 				<p className="text-gray-600">
-					{uploading ? "Uploading..." : "Drag & drop a file here, or click to select"}
+					{uploading
+						? "Uploading files..."
+						: "Drag & drop files here, or click to select"}
 				</p>
 				<p className="text-sm text-gray-400 mt-1">PDF, DOCX, TXT, CSV, JSON, MD</p>
 			</label>
 			{error && <p className="text-red-600 text-sm mt-2">{error}</p>}
+			{lastResult && (
+				<div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-left text-sm text-slate-700">
+					<p className="font-medium text-slate-900">
+						Processed {lastResult.summary.total} file
+						{lastResult.summary.total === 1 ? "" : "s"}
+					</p>
+					<p className="mt-1 text-slate-600">
+						Accepted: {lastResult.summary.accepted} · Duplicates:{" "}
+						{lastResult.summary.duplicate} · Failed: {lastResult.summary.failed}
+					</p>
+					<ul className="mt-2 space-y-1">
+						{lastResult.results
+							.filter((result) => result.status !== "accepted")
+							.map((result) => (
+								<li key={`${result.filename}-${result.status}`}>
+									{result.status === "duplicate"
+										? `${result.filename}: duplicate${
+												result.existingDocumentId
+													? ` (${result.existingDocumentId})`
+													: ""
+											}`
+										: `${result.filename}: ${result.error ?? "Upload failed"}`}
+								</li>
+							))}
+					</ul>
+				</div>
+			)}
 		</div>
 	);
 }
