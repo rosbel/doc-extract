@@ -4,6 +4,9 @@ import { and, count, desc, eq, sql } from "drizzle-orm";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import {
+	DOCUMENT_STATUSES,
+	JOB_STATUSES,
+	SCHEMA_STATUSES,
 	documents,
 	extractionSchemas,
 	processingJobs,
@@ -30,16 +33,6 @@ import {
 	isSemanticSearchConfigured,
 } from "./vector-store.js";
 
-const DOCUMENT_STATUSES = [
-	"pending",
-	"classifying",
-	"extracting",
-	"completed",
-	"failed",
-	"duplicate",
-] as const;
-const SCHEMA_STATUSES = ["active", "archived"] as const;
-const JOB_STATUSES = ["pending", "running", "completed", "failed"] as const;
 const RECENT_LIMIT = 10;
 
 function createHttpError(status: number, message: string) {

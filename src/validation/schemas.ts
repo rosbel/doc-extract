@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { type DocumentStatus, DOCUMENT_STATUSES, SCHEMA_REVISION_SOURCES } from "../db/schema.js";
 
 export const schemaRevisionMetadataInput = z.object({
-	source: z.enum(["manual", "ai", "restore"]).optional().default("manual"),
+	source: z.enum(SCHEMA_REVISION_SOURCES).optional().default("manual"),
 	summary: z.string().trim().max(500).optional(),
 });
 
@@ -52,17 +53,7 @@ export const schemaAssistRequestInput = z
 	});
 
 export const documentQueryInput = z.object({
-	status: z
-		.enum([
-			"pending",
-			"classifying",
-			"extracting",
-			"completed",
-			"unclassified",
-			"failed",
-			"duplicate",
-		])
-		.optional(),
+	status: z.enum(DOCUMENT_STATUSES).optional(),
 	schemaId: z.string().uuid().optional(),
 	page: z.coerce.number().int().min(1).optional().default(1),
 	limit: z.coerce.number().int().min(1).max(100).optional().default(20),
@@ -75,17 +66,18 @@ export const searchInput = z.object({
 	limit: z.coerce.number().int().min(1).max(50).optional().default(10),
 });
 
+// Admin filters exclude "unclassified" — only actionable statuses
+const ADMIN_FILTERABLE_STATUSES = [
+	"pending",
+	"classifying",
+	"extracting",
+	"completed",
+	"failed",
+	"duplicate",
+] as const satisfies readonly DocumentStatus[];
+
 export const adminDocumentsQueryInput = z.object({
-	status: z
-		.enum([
-			"pending",
-			"classifying",
-			"extracting",
-			"completed",
-			"failed",
-			"duplicate",
-		])
-		.optional(),
+	status: z.enum(ADMIN_FILTERABLE_STATUSES).optional(),
 	page: z.coerce.number().int().min(1).optional().default(1),
 	limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });

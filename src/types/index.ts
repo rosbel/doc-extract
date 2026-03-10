@@ -6,6 +6,14 @@ import type {
 	schemaRevisions,
 } from "../db/schema.js";
 
+export type {
+	DocumentStatus,
+	JobStatus,
+	JobType,
+	SchemaRevisionSource,
+	SchemaStatus,
+} from "../db/schema.js";
+
 export type ExtractionSchema = InferSelectModel<typeof extractionSchemas>;
 export type NewExtractionSchema = InferInsertModel<typeof extractionSchemas>;
 export type SchemaRevision = InferSelectModel<typeof schemaRevisions>;
