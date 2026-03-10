@@ -140,7 +140,11 @@ function normalizeProposal(
 ) {
 	const nameValue = readProperty(item, ["name", "title"]);
 	const descriptionValue = readProperty(item, ["description"]);
-	const jsonSchemaValue = readProperty(item, ["jsonSchema", "json_schema", "schema"]);
+	const jsonSchemaValue = readProperty(item, [
+		"jsonSchema",
+		"json_schema",
+		"schema",
+	]);
 	const classificationHintsValue = readProperty(item, [
 		"classificationHints",
 		"classification_hints",
@@ -152,7 +156,9 @@ function normalizeProposal(
 	]);
 
 	return {
-		name: nameValue.found ? String(nameValue.value ?? "") : (defaults.name ?? ""),
+		name: nameValue.found
+			? String(nameValue.value ?? "")
+			: (defaults.name ?? ""),
 		description: descriptionValue.found
 			? String(descriptionValue.value ?? "")
 			: (defaults.description ?? ""),
@@ -214,7 +220,10 @@ function tryNormalizeProposal(
 	}
 
 	try {
-		const proposal = normalizeProposal(item as Record<string, unknown>, defaults);
+		const proposal = normalizeProposal(
+			item as Record<string, unknown>,
+			defaults,
+		);
 		if (!proposal.name.trim()) {
 			throw new Error("Proposal name is empty");
 		}

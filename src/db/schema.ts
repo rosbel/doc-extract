@@ -14,9 +14,22 @@ import {
 // ── Canonical status / type values ──────────────────────────────────
 export const SCHEMA_STATUSES = ["active", "archived"] as const;
 export const SCHEMA_REVISION_SOURCES = ["manual", "ai", "restore"] as const;
-export const DOCUMENT_STATUSES = ["pending", "classifying", "extracting", "completed", "unclassified", "failed", "duplicate"] as const;
+export const DOCUMENT_STATUSES = [
+	"pending",
+	"classifying",
+	"extracting",
+	"completed",
+	"unclassified",
+	"failed",
+	"duplicate",
+] as const;
 export const JOB_TYPES = ["classification", "extraction"] as const;
-export const JOB_STATUSES = ["pending", "running", "completed", "failed"] as const;
+export const JOB_STATUSES = [
+	"pending",
+	"running",
+	"completed",
+	"failed",
+] as const;
 
 export type SchemaStatus = (typeof SCHEMA_STATUSES)[number];
 export type SchemaRevisionSource = (typeof SCHEMA_REVISION_SOURCES)[number];
@@ -52,7 +65,10 @@ export const schemaRevisions = pgTable("schema_revisions", {
 		.array()
 		.notNull()
 		.default([]),
-	source: text("source").$type<SchemaRevisionSource>().notNull().default("manual"),
+	source: text("source")
+		.$type<SchemaRevisionSource>()
+		.notNull()
+		.default("manual"),
 	summary: text("summary"),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 });

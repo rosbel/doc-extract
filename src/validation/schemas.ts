@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { type DocumentStatus, DOCUMENT_STATUSES, SCHEMA_REVISION_SOURCES } from "../db/schema.js";
+import {
+	DOCUMENT_STATUSES,
+	type DocumentStatus,
+	SCHEMA_REVISION_SOURCES,
+} from "../db/schema.js";
 
 export const schemaRevisionMetadataInput = z.object({
 	source: z.enum(SCHEMA_REVISION_SOURCES).optional().default("manual"),

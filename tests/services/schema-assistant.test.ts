@@ -270,9 +270,9 @@ describe("schema assistant", () => {
 		);
 
 		expect(result.proposal.description).toContain("due dates");
-		expect(result.diff.find((entry) => entry.field === "jsonSchema")?.changed).toBe(
-			true,
-		);
+		expect(
+			result.diff.find((entry) => entry.field === "jsonSchema")?.changed,
+		).toBe(true);
 	});
 
 	it("merges partial edit proposals with the current schema", async () => {
@@ -315,9 +315,9 @@ describe("schema assistant", () => {
 		expect(result.proposal.classificationHints).toEqual(
 			currentSchema.classificationHints,
 		);
-		expect(result.diff.find((entry) => entry.field === "jsonSchema")?.changed).toBe(
-			true,
-		);
+		expect(
+			result.diff.find((entry) => entry.field === "jsonSchema")?.changed,
+		).toBe(true);
 	});
 
 	it("normalizes alias fields for edit responses", async () => {
