@@ -59,9 +59,7 @@ function buildDocumentSummaries(documents: AssistantDocumentInput[]) {
 }
 
 function buildPromptContext(prompt?: string) {
-	return prompt?.trim()
-		? `\n\nUser request:\n${prompt.trim()}`
-		: "";
+	return prompt?.trim() ? `\n\nUser request:\n${prompt.trim()}` : "";
 }
 
 function buildExistingSchemaContext(existingSchemas: ExtractionSchema[]) {
@@ -79,7 +77,11 @@ function normalizeJsonSchema(rawSchema: unknown) {
 		return JSON.parse(rawSchema) as Record<string, unknown>;
 	}
 
-	if (typeof rawSchema === "object" && rawSchema !== null && !Array.isArray(rawSchema)) {
+	if (
+		typeof rawSchema === "object" &&
+		rawSchema !== null &&
+		!Array.isArray(rawSchema)
+	) {
 		return rawSchema as Record<string, unknown>;
 	}
 
@@ -321,7 +323,9 @@ ${documents.length > 0 ? `Uploaded documents:\n${buildDocumentSummaries(document
 		analysis: typeof parsed.analysis === "string" ? parsed.analysis : "",
 		proposals: rawProposals
 			.map((item, index) => tryNormalizeProposal(item, "create", index))
-			.filter((proposal): proposal is SchemaAssistantProposal => proposal !== null),
+			.filter(
+				(proposal): proposal is SchemaAssistantProposal => proposal !== null,
+			),
 	};
 }
 

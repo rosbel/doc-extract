@@ -8,7 +8,12 @@ vi.mock("../src/routes/documents.js", async () => {
 		res.json({ documents: [] });
 	});
 	router.get("/:id/status", (_req, res) => {
-		res.json({ id: "doc-1", status: "pending", extractionConfidence: null, errorMessage: null });
+		res.json({
+			id: "doc-1",
+			status: "pending",
+			extractionConfidence: null,
+			errorMessage: null,
+		});
 	});
 	router.post("/", (_req, res) => {
 		res.status(201).json({ ok: true });
@@ -37,8 +42,8 @@ describe("server rate limiting", () => {
 
 	afterEach(() => {
 		vi.clearAllMocks();
-		delete process.env.API_RATE_LIMIT_REQUESTS_PER_WINDOW;
-		delete process.env.DOCUMENT_UPLOAD_RATE_LIMIT_REQUESTS_PER_WINDOW;
+		process.env.API_RATE_LIMIT_REQUESTS_PER_WINDOW = undefined;
+		process.env.DOCUMENT_UPLOAD_RATE_LIMIT_REQUESTS_PER_WINDOW = undefined;
 	});
 
 	it("does not rate limit document reads", async () => {

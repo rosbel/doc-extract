@@ -1,7 +1,7 @@
+import { pathToFileURL } from "node:url";
 import cors from "cors";
 import express from "express";
 import rateLimit from "express-rate-limit";
-import { pathToFileURL } from "node:url";
 import { config } from "./config.js";
 import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -48,7 +48,10 @@ export function createApp() {
 
 const app = createApp();
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+	process.argv[1] &&
+	import.meta.url === pathToFileURL(process.argv[1]).href
+) {
 	app.listen(config.port, () => {
 		logger.info(`Server running on port ${config.port}`);
 	});

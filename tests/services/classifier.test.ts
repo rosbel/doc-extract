@@ -145,8 +145,8 @@ describe("classifyDocument", () => {
 			],
 		});
 
-		await expect(classifyDocument("mystery document", mockSchemas)).rejects.toThrow(
-			'Classifier returned unknown schemaId "schema-999"',
-		);
+		await expect(
+			classifyDocument("mystery document", mockSchemas),
+		).rejects.toThrow('Classifier returned unknown schemaId "schema-999"');
 	});
 });

@@ -61,10 +61,7 @@ export function flattenExtractedData(
 	if (typeof value === "object") {
 		return Object.entries(value as Record<string, unknown>).flatMap(
 			([key, nestedValue]) =>
-				flattenExtractedData(
-					nestedValue,
-					path ? `${path}.${key}` : key,
-				),
+				flattenExtractedData(nestedValue, path ? `${path}.${key}` : key),
 		);
 	}
 
@@ -86,18 +83,29 @@ function collectSchemaFieldNames(
 
 	const propertyPaths = propertyEntries.flatMap(([key, nested]) => {
 		const nextPath = path ? `${path}.${key}` : key;
-		return [nextPath, ...collectSchemaFieldNames(nested as Record<string, unknown>, nextPath)];
+		return [
+			nextPath,
+			...collectSchemaFieldNames(nested as Record<string, unknown>, nextPath),
+		];
 	});
 
 	if ("items" in schema && schema.items && typeof schema.items === "object") {
-		return [...propertyPaths, ...collectSchemaFieldNames(schema.items as Record<string, unknown>, `${path}[]`)];
+		return [
+			...propertyPaths,
+			...collectSchemaFieldNames(
+				schema.items as Record<string, unknown>,
+				`${path}[]`,
+			),
+		];
 	}
 
 	return propertyPaths;
 }
 
 export function buildSearchCorpus(input: SearchCorpusInput): string {
-	const sections: string[] = [`filename ${normalizeWhitespace(input.filename)}`];
+	const sections: string[] = [
+		`filename ${normalizeWhitespace(input.filename)}`,
+	];
 	const flattenedFields = flattenExtractedData(input.extractedData ?? null);
 
 	if (input.schemaName) {
@@ -105,7 +113,9 @@ export function buildSearchCorpus(input: SearchCorpusInput): string {
 	}
 
 	if (input.schemaDescription) {
-		sections.push(`schema description ${normalizeWhitespace(input.schemaDescription)}`);
+		sections.push(
+			`schema description ${normalizeWhitespace(input.schemaDescription)}`,
+		);
 	}
 
 	const schemaFields = collectSchemaFieldNames(input.schemaJsonSchema ?? null);
@@ -141,14 +151,14 @@ export function buildSearchChunks(input: SearchCorpusInput): SearchChunk[] {
 			: "",
 		schemaFields.length > 0 ? `schema fields ${schemaFields.join(" ")}` : "",
 		flattenedFields.length > 0
-			? flattenedFields
-					.map(({ path, value }) => `${path} ${value}`)
-					.join(" ")
+			? flattenedFields.map(({ path, value }) => `${path} ${value}`).join(" ")
 			: "",
 	];
 
 	const chunks: SearchChunk[] = [];
-	const headerText = normalizeWhitespace(headerParts.filter(Boolean).join("\n"));
+	const headerText = normalizeWhitespace(
+		headerParts.filter(Boolean).join("\n"),
+	);
 
 	if (headerText) {
 		chunks.push({
@@ -241,6 +251,9 @@ export function findSnippet(text: string, query: string): string {
 	}
 
 	const start = Math.max(0, matchIndex - 60);
-	const end = Math.min(normalizedText.length, matchIndex + normalizedQuery.length + 120);
+	const end = Math.min(
+		normalizedText.length,
+		matchIndex + normalizedQuery.length + 120,
+	);
 	return normalizedText.slice(start, end);
 }

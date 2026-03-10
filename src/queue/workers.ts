@@ -10,16 +10,13 @@ import {
 import { logger } from "../lib/logger.js";
 import { classifyDocument } from "../services/classifier.js";
 import { extractDocument } from "../services/extractor.js";
-import { buildSearchCorpus } from "../services/search-index.js";
 import { getLatestSchemaRevision } from "../services/schema-lifecycle.js";
+import { buildSearchCorpus } from "../services/search-index.js";
 import { indexDocument } from "../services/vector-store.js";
 import { redisConnectionOpts } from "./index.js";
-import {
-	isMaintenanceModeEnabled,
-	writeWorkerHeartbeat,
-} from "./redis.js";
 import type { JobData } from "./jobs.js";
 import { enqueueExtraction } from "./jobs.js";
+import { isMaintenanceModeEnabled, writeWorkerHeartbeat } from "./redis.js";
 
 export async function handleClassification(documentId: string) {
 	// Update status
@@ -54,14 +51,14 @@ export async function handleClassification(documentId: string) {
 		}
 
 		const revisionEntries = await Promise.all(
-			activeSchemas.map(async (schema) => [
-				schema.id,
-				await getLatestSchemaRevision(db, schema.id),
-			] as const),
+			activeSchemas.map(
+				async (schema) =>
+					[schema.id, await getLatestSchemaRevision(db, schema.id)] as const,
+			),
 		);
 		const revisionMap = new Map(revisionEntries);
-		const eligibleSchemas = activeSchemas.filter((schema) =>
-			revisionMap.has(schema.id) && revisionMap.get(schema.id),
+		const eligibleSchemas = activeSchemas.filter(
+			(schema) => revisionMap.has(schema.id) && revisionMap.get(schema.id),
 		);
 		const skippedSchemas = activeSchemas.filter(
 			(schema) => !revisionMap.get(schema.id),
@@ -295,10 +292,7 @@ export function createWorker() {
 			if (job.data.type === "classify") {
 				await handleClassification(job.data.documentId);
 			} else if (job.data.type === "extract") {
-				await handleExtraction(
-					job.data.documentId,
-					job.data.schemaRevisionId,
-				);
+				await handleExtraction(job.data.documentId, job.data.schemaRevisionId);
 			}
 		},
 		{

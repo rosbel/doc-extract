@@ -166,27 +166,32 @@ function buildBatchSummary(results: BatchUploadResult[]) {
 	};
 }
 
-documentsRouter.post("/", uploadLimiter, upload.single("file"), async (req, res, next) => {
-	try {
-		if (!req.file) {
-			res.status(400).json({ error: "No file uploaded" });
-			return;
-		}
+documentsRouter.post(
+	"/",
+	uploadLimiter,
+	upload.single("file"),
+	async (req, res, next) => {
+		try {
+			if (!req.file) {
+				res.status(400).json({ error: "No file uploaded" });
+				return;
+			}
 
-		const result = await ingestUploadedFile(req.file);
-		if (result.status === "duplicate") {
-			res.status(409).json({
-				error: "Duplicate document",
-				existingDocumentId: result.existingDocumentId,
-			});
-			return;
-		}
+			const result = await ingestUploadedFile(req.file);
+			if (result.status === "duplicate") {
+				res.status(409).json({
+					error: "Duplicate document",
+					existingDocumentId: result.existingDocumentId,
+				});
+				return;
+			}
 
-		res.status(201).json(result.document);
-	} catch (err) {
-		next(err);
-	}
-});
+			res.status(201).json(result.document);
+		} catch (err) {
+			next(err);
+		}
+	},
+);
 
 documentsRouter.post(
 	"/batch",
@@ -223,9 +228,7 @@ documentsRouter.post(
 						filename: file.originalname,
 						status: "failed",
 						error:
-							err instanceof Error
-								? err.message
-								: "Failed to upload document",
+							err instanceof Error ? err.message : "Failed to upload document",
 					});
 				}
 			}
