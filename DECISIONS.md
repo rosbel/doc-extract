@@ -157,7 +157,7 @@ There are zero hard-coded document types anywhere in the codebase. The system is
   - `GET /api/schemas/:id` — Get schema details
   - `PUT /api/schemas/:id` — Update schema (fields, hints, etc.)
   - `DELETE /api/schemas/:id` — Soft-delete (archives, preserving history)
-- **AI-assisted schema drafting and editing** (`src/services/schema-assistant.ts`): Users can call `POST /api/schemas/assist` in either `create` or `edit` mode. The assistant accepts prompt-only guidance, uploaded files, or stored document IDs, and returns either reusable create proposals or a proposed edit draft plus field-by-field diff.
+- **AI-assisted schema drafting and editing** (`src/services/schema-assistant.ts`): Users can call `POST /api/schemas/assist` in either `create` or `edit` mode. The assistant accepts prompt-only guidance, uploaded files, or stored document IDs, and returns either reusable create proposals or a proposed edit draft plus field-by-field diff. Create-mode responses include complete suggested schemas with JSON Schema definitions, classification hints, and reasoning that can be accepted directly in the frontend.
 
 This means a user can define a new document type (e.g., "Medical Lab Report") by creating a schema with the relevant fields, and all subsequently uploaded documents will be classified and extracted against it — no code changes required.
 
@@ -306,7 +306,7 @@ This design keeps semantic retrieval as the primary behavior without making Pine
 |----------|---------|
 | `POST /api/schemas/assist` | Analyze prompts, files, and/or stored documents to create new schema drafts or refine an existing schema |
 
-This is a convenience feature that bootstraps schema creation. Users upload representative documents, the LLM analyzes them, and returns suggested schemas with JSON Schema definitions, classification hints, and reasoning. The frontend allows one-click creation of recommended schemas.
+This is a convenience feature that supports both schema creation and schema refinement. Users can send representative documents, stored document references, prompt-only guidance, or a combination of those inputs. Create mode returns suggested schemas with JSON Schema definitions, classification hints, and reasoning. Edit mode returns a normalized proposal plus a computed diff so the frontend can show concrete field changes or a successful “no changes suggested” review state.
 
 ### Cross-Cutting Concerns
 
@@ -318,7 +318,7 @@ This is a convenience feature that bootstraps schema creation. Users upload repr
 
 ### What's Not Included (and Why)
 
-- **Authentication/authorization**: Not in scope for this challenge. In production, this would be an auth middleware layer (JWT, API keys, etc.).
+- **Authentication/authorization**: Intentionally omitted to keep the MVP focused. In production, this would be an auth middleware layer (JWT, API keys, etc.).
 - **Admin access model**: The internal admin console uses a shared `ADMIN_TOKEN` header rather than full user accounts. This keeps the MVP operationally simple while still protecting destructive endpoints.
 - **Admin brute-force protection**: Repeated invalid admin token attempts are tracked and temporarily locked out in process memory on the API server. This is an explicit MVP tradeoff: it protects a single instance from naive brute-force attempts, but it is not durable across restarts and is not coordinated across multiple replicas. A Redis-backed limiter would be the production evolution.
 - **API versioning**: Single version is sufficient for the current scope.
