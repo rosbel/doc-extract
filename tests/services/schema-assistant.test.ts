@@ -208,7 +208,8 @@ describe("schema assistant", () => {
 									},
 								}),
 								classificationHints: ["invoice", "amount due"],
-								reasoning: "Sample invoices consistently include tabular charges.",
+								reasoning:
+									"Sample invoices consistently include tabular charges.",
 								matchingDocuments: ["invoice-1.pdf"],
 							},
 						}),
@@ -224,12 +225,12 @@ describe("schema assistant", () => {
 		);
 
 		expect(result.proposal.classificationHints).toContain("amount due");
-		expect(result.diff.find((entry) => entry.field === "jsonSchema")?.changed).toBe(
-			true,
-		);
-		expect(result.diff.find((entry) => entry.field === "description")?.changed).toBe(
-			true,
-		);
+		expect(
+			result.diff.find((entry) => entry.field === "jsonSchema")?.changed,
+		).toBe(true);
+		expect(
+			result.diff.find((entry) => entry.field === "description")?.changed,
+		).toBe(true);
 	});
 
 	it("accepts a bare top-level edit proposal object", async () => {

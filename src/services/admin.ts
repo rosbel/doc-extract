@@ -140,7 +140,8 @@ async function getOpenRouterStatus(): Promise<AdminOverview["openrouter"]> {
 			configured: true,
 			status: "offline",
 			model: config.openrouter.model,
-			message: error instanceof Error ? error.message : "OpenRouter probe failed",
+			message:
+				error instanceof Error ? error.message : "OpenRouter probe failed",
 		};
 	}
 }

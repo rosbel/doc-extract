@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { extractionSchemas, schemaRevisions } from "../../src/db/schema.js";
 import {
 	createSchemaWithRevision,
 	restoreSchemaRevision,
 	updateSchemaWithRevision,
 } from "../../src/services/schema-lifecycle.js";
-import { extractionSchemas, schemaRevisions } from "../../src/db/schema.js";
 
 function createLifecycleDb() {
 	const schemas: Array<Record<string, unknown>> = [];
@@ -60,9 +60,10 @@ function createLifecycleDb() {
 		select: vi.fn(() => ({
 			from: () => ({
 				where: () => ({
-					orderBy: async () => [...revisions].sort((left, right) =>
-						Number(right.version) - Number(left.version),
-					),
+					orderBy: async () =>
+						[...revisions].sort(
+							(left, right) => Number(right.version) - Number(left.version),
+						),
 				}),
 			}),
 		})),
@@ -76,7 +77,13 @@ function createLifecycleDb() {
 		},
 	};
 
-	return { db, schemas, revisions, extractionSchemaFindFirst, schemaRevisionFindFirst };
+	return {
+		db,
+		schemas,
+		revisions,
+		extractionSchemaFindFirst,
+		schemaRevisionFindFirst,
+	};
 }
 
 describe("schema lifecycle", () => {
@@ -110,7 +117,8 @@ describe("schema lifecycle", () => {
 	});
 
 	it("updates a schema in place and appends a new revision", async () => {
-		const { db, schemas, revisions, extractionSchemaFindFirst } = createLifecycleDb();
+		const { db, schemas, revisions, extractionSchemaFindFirst } =
+			createLifecycleDb();
 		schemas.push({
 			id: "schema-1",
 			name: "Invoice",
@@ -133,7 +141,9 @@ describe("schema lifecycle", () => {
 		});
 
 		expect(result?.schema.version).toBe(2);
-		expect(schemas[0].description).toBe("Captures invoice totals and line items");
+		expect(schemas[0].description).toBe(
+			"Captures invoice totals and line items",
+		);
 		expect(revisions).toHaveLength(1);
 		expect(revisions[0]).toMatchObject({
 			schemaId: "schema-1",

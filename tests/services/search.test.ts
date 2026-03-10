@@ -7,7 +7,10 @@ const {
 	searchDocumentMock,
 	isSemanticSearchConfiguredMock,
 } = vi.hoisted(() => ({
-	selectResponses: [] as Array<{ kind: "keyword" | "documents"; rows: unknown[] }>,
+	selectResponses: [] as Array<{
+		kind: "keyword" | "documents";
+		rows: unknown[];
+	}>,
 	selectMock: vi.fn(() => {
 		const next = selectResponses.shift();
 		if (!next) {
@@ -66,7 +69,10 @@ describe("searchDocuments", () => {
 		findSchemaMock.mockResolvedValue({
 			id: "schema-1",
 			name: "Invoice",
-			jsonSchema: { type: "object", properties: { vendor: { type: "string" } } },
+			jsonSchema: {
+				type: "object",
+				properties: { vendor: { type: "string" } },
+			},
 		});
 		isSemanticSearchConfiguredMock.mockReturnValue(true);
 		searchDocumentMock.mockResolvedValue([

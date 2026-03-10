@@ -51,7 +51,9 @@ describe("schemasRouter uploads", () => {
 
 		const express = (await import("express")).default;
 		const { schemasRouter } = await import("../../src/routes/schemas.js");
-		const { errorHandler } = await import("../../src/middleware/error-handler.js");
+		const { errorHandler } = await import(
+			"../../src/middleware/error-handler.js"
+		);
 
 		const app = express();
 		app.use("/api/schemas", schemasRouter);
