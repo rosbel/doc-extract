@@ -281,6 +281,8 @@ export function SchemaWorkbench({
 	const activeCreateProposal = createProposals[activeCreateProposalIndex] ?? null;
 	const hasAppliedCreateDraft =
 		isCreateMode && appliedCreateProposalIndex !== null && createProposals.length > 0;
+	const changedDiffEntries = diffEntries.filter((entry) => entry.changed);
+	const hasChangedEditDiffs = changedDiffEntries.length > 0;
 
 	const createActionLabel =
 		assistantFiles.length > 0 || sourceDocument ? "Analyze Documents" : "Generate Drafts";
@@ -564,37 +566,38 @@ export function SchemaWorkbench({
 					<div className="flex items-start justify-between gap-4">
 						<div>
 							<h3 className="text-lg font-semibold text-slate-900">
-								Proposed Revision
+								{hasChangedEditDiffs ? "Proposed Revision" : "No Changes Suggested"}
 							</h3>
 							<p className="mt-1 text-sm text-slate-500">
 								{editProposal.reasoning}
 							</p>
 						</div>
-						<div className="flex gap-2">
-							<button
-								type="button"
-								onClick={() => applyProposalToEditor(editProposal)}
-								className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-							>
-								Apply All
-							</button>
-							<button
-								type="button"
-								onClick={() => {
-									setEditProposal(null);
-									setDiffEntries([]);
-								}}
-								className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-							>
-								Discard
-							</button>
-						</div>
+						{hasChangedEditDiffs && (
+							<div className="flex gap-2">
+								<button
+									type="button"
+									onClick={() => applyProposalToEditor(editProposal)}
+									className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+								>
+									Apply All
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										setEditProposal(null);
+										setDiffEntries([]);
+									}}
+									className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+								>
+									Discard
+								</button>
+							</div>
+						)}
 					</div>
 
-					<div className="mt-4 space-y-4">
-						{diffEntries
-							.filter((entry) => entry.changed)
-							.map((entry) => (
+					{hasChangedEditDiffs ? (
+						<div className="mt-4 space-y-4">
+							{changedDiffEntries.map((entry) => (
 								<div
 									key={entry.field}
 									className="rounded-xl border border-slate-200 p-4"
@@ -620,7 +623,12 @@ export function SchemaWorkbench({
 									</div>
 								</div>
 							))}
-					</div>
+						</div>
+					) : (
+						<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+							AI reviewed the current schema and did not suggest any changes.
+						</div>
+					)}
 				</div>
 			)}
 		</div>

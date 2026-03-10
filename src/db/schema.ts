@@ -3,7 +3,6 @@ import {
 	index,
 	integer,
 	jsonb,
-	pgEnum,
 	pgTable,
 	real,
 	text,
@@ -12,14 +11,10 @@ import {
 	uuid,
 } from "drizzle-orm/pg-core";
 
-export const schemaStatusEnum = pgEnum("schema_status", ["active", "archived"]);
-export const schemaRevisionSourceEnum = pgEnum("schema_revision_source", [
-	"manual",
-	"ai",
-	"restore",
-]);
-
-export const documentStatusEnum = pgEnum("document_status", [
+// ── Canonical status / type values ──────────────────────────────────
+export const SCHEMA_STATUSES = ["active", "archived"] as const;
+export const SCHEMA_REVISION_SOURCES = ["manual", "ai", "restore"] as const;
+export const DOCUMENT_STATUSES = [
 	"pending",
 	"classifying",
 	"extracting",
@@ -27,16 +22,20 @@ export const documentStatusEnum = pgEnum("document_status", [
 	"unclassified",
 	"failed",
 	"duplicate",
-]);
-
-export const jobTypeEnum = pgEnum("job_type", ["classification", "extraction"]);
-
-export const jobStatusEnum = pgEnum("job_status", [
+] as const;
+export const JOB_TYPES = ["classification", "extraction"] as const;
+export const JOB_STATUSES = [
 	"pending",
 	"running",
 	"completed",
 	"failed",
-]);
+] as const;
+
+export type SchemaStatus = (typeof SCHEMA_STATUSES)[number];
+export type SchemaRevisionSource = (typeof SCHEMA_REVISION_SOURCES)[number];
+export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
+export type JobType = (typeof JOB_TYPES)[number];
+export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export const extractionSchemas = pgTable("extraction_schemas", {
 	id: uuid("id").defaultRandom().primaryKey(),
@@ -48,7 +47,7 @@ export const extractionSchemas = pgTable("extraction_schemas", {
 		.array()
 		.notNull()
 		.default([]),
-	status: schemaStatusEnum("status").notNull().default("active"),
+	status: text("status").$type<SchemaStatus>().notNull().default("active"),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -66,7 +65,10 @@ export const schemaRevisions = pgTable("schema_revisions", {
 		.array()
 		.notNull()
 		.default([]),
-	source: schemaRevisionSourceEnum("source").notNull().default("manual"),
+	source: text("source")
+		.$type<SchemaRevisionSource>()
+		.notNull()
+		.default("manual"),
 	summary: text("summary"),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -82,7 +84,7 @@ export const documents = pgTable(
 		rawText: text("raw_text"),
 		searchText: text("search_text"),
 		storagePath: text("storage_path").notNull(),
-		status: documentStatusEnum("status").notNull().default("pending"),
+		status: text("status").$type<DocumentStatus>().notNull().default("pending"),
 		schemaId: uuid("schema_id").references(() => extractionSchemas.id),
 		schemaVersion: integer("schema_version"),
 		schemaRevisionId: uuid("schema_revision_id").references(
@@ -109,8 +111,8 @@ export const processingJobs = pgTable("processing_jobs", {
 	documentId: uuid("document_id")
 		.references(() => documents.id, { onDelete: "cascade" })
 		.notNull(),
-	jobType: jobTypeEnum("job_type").notNull(),
-	status: jobStatusEnum("status").notNull().default("pending"),
+	jobType: text("job_type").$type<JobType>().notNull(),
+	status: text("status").$type<JobStatus>().notNull().default("pending"),
 	attemptNumber: integer("attempt_number").notNull().default(1),
 	errorMessage: text("error_message"),
 	metadata: jsonb("metadata"),

@@ -40,6 +40,15 @@ export interface EditSchemaAssistResult {
 	diff: SchemaDiffEntry[];
 }
 
+interface ProposalNormalizationDefaults {
+	name?: string;
+	description?: string;
+	jsonSchema?: Record<string, unknown>;
+	classificationHints?: string[];
+	reasoning?: string;
+	matchingDocuments?: string[];
+}
+
 class SchemaAssistantOutputError extends Error {
 	statusCode = 502;
 
@@ -72,7 +81,44 @@ function buildExistingSchemaContext(existingSchemas: ExtractionSchema[]) {
 		.join("\n")}`;
 }
 
-function normalizeJsonSchema(rawSchema: unknown) {
+function summarizeKeys(value: unknown) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return [];
+	}
+
+	return Object.keys(value as Record<string, unknown>).slice(0, 12);
+}
+
+function readProperty(
+	record: Record<string, unknown>,
+	keys: string[],
+): { found: boolean; value: unknown } {
+	for (const key of keys) {
+		if (key in record) {
+			return {
+				found: true,
+				value: record[key],
+			};
+		}
+	}
+
+	return {
+		found: false,
+		value: undefined,
+	};
+}
+
+function normalizeJsonSchema(
+	rawSchema: unknown,
+	fallback?: Record<string, unknown>,
+) {
+	if (rawSchema === undefined) {
+		if (fallback) {
+			return fallback;
+		}
+		throw new Error("Proposal jsonSchema is missing");
+	}
+
 	if (typeof rawSchema === "string") {
 		return JSON.parse(rawSchema) as Record<string, unknown>;
 	}
@@ -88,24 +134,48 @@ function normalizeJsonSchema(rawSchema: unknown) {
 	throw new Error(`Invalid jsonSchema payload: ${JSON.stringify(rawSchema)}`);
 }
 
-function normalizeProposal(item: Record<string, unknown>) {
+function normalizeProposal(
+	item: Record<string, unknown>,
+	defaults: ProposalNormalizationDefaults = {},
+) {
+	const nameValue = readProperty(item, ["name", "title"]);
+	const descriptionValue = readProperty(item, ["description"]);
+	const jsonSchemaValue = readProperty(item, [
+		"jsonSchema",
+		"json_schema",
+		"schema",
+	]);
+	const classificationHintsValue = readProperty(item, [
+		"classificationHints",
+		"classification_hints",
+	]);
+	const reasoningValue = readProperty(item, ["reasoning", "rationale"]);
+	const matchingDocumentsValue = readProperty(item, [
+		"matchingDocuments",
+		"matching_documents",
+	]);
+
 	return {
-		name: String(item.name ?? item.title ?? ""),
-		description: String(item.description ?? ""),
-		jsonSchema: normalizeJsonSchema(
-			item.jsonSchema ?? item.json_schema ?? item.schema,
-		),
-		classificationHints: Array.isArray(item.classificationHints)
-			? item.classificationHints.map((value) => String(value))
-			: Array.isArray(item.classification_hints)
-				? item.classification_hints.map((value) => String(value))
-				: [],
-		reasoning: String(item.reasoning ?? item.rationale ?? ""),
-		matchingDocuments: Array.isArray(item.matchingDocuments)
-			? item.matchingDocuments.map((value) => String(value))
-			: Array.isArray(item.matching_documents)
-				? item.matching_documents.map((value) => String(value))
-				: [],
+		name: nameValue.found
+			? String(nameValue.value ?? "")
+			: (defaults.name ?? ""),
+		description: descriptionValue.found
+			? String(descriptionValue.value ?? "")
+			: (defaults.description ?? ""),
+		jsonSchema: normalizeJsonSchema(jsonSchemaValue.value, defaults.jsonSchema),
+		classificationHints: classificationHintsValue.found
+			? Array.isArray(classificationHintsValue.value)
+				? classificationHintsValue.value.map((value) => String(value))
+				: []
+			: (defaults.classificationHints ?? []),
+		reasoning: reasoningValue.found
+			? String(reasoningValue.value ?? "")
+			: (defaults.reasoning ?? ""),
+		matchingDocuments: matchingDocumentsValue.found
+			? Array.isArray(matchingDocumentsValue.value)
+				? matchingDocumentsValue.value.map((value) => String(value))
+				: []
+			: (defaults.matchingDocuments ?? []),
 	} satisfies SchemaAssistantProposal;
 }
 
@@ -136,18 +206,24 @@ function tryNormalizeProposal(
 	item: unknown,
 	context: "create" | "edit",
 	index = 0,
+	defaults?: ProposalNormalizationDefaults,
+	meta?: Record<string, unknown>,
 ): SchemaAssistantProposal | null {
 	if (!item || typeof item !== "object" || Array.isArray(item)) {
 		logger.warn("Schema assistant returned an invalid proposal shape", {
 			context,
 			index,
 			type: Array.isArray(item) ? "array" : typeof item,
+			...meta,
 		});
 		return null;
 	}
 
 	try {
-		const proposal = normalizeProposal(item as Record<string, unknown>);
+		const proposal = normalizeProposal(
+			item as Record<string, unknown>,
+			defaults,
+		);
 		if (!proposal.name.trim()) {
 			throw new Error("Proposal name is empty");
 		}
@@ -167,9 +243,46 @@ function tryNormalizeProposal(
 			context,
 			index,
 			error: error instanceof Error ? error.message : "Unknown error",
+			candidateKeys: summarizeKeys(item),
+			...meta,
 		});
 		return null;
 	}
+}
+
+function collectRawEditProposal(parsed: Record<string, unknown>) {
+	if (
+		typeof parsed.proposal === "object" &&
+		parsed.proposal !== null &&
+		!Array.isArray(parsed.proposal)
+	) {
+		return {
+			candidate: parsed.proposal,
+			candidateShape: "proposal",
+		};
+	}
+
+	if (Array.isArray(parsed.proposals) && parsed.proposals.length > 0) {
+		return {
+			candidate: parsed.proposals[0],
+			candidateShape: "proposals[0]",
+		};
+	}
+
+	if (
+		("name" in parsed || "title" in parsed) &&
+		("jsonSchema" in parsed || "json_schema" in parsed || "schema" in parsed)
+	) {
+		return {
+			candidate: parsed,
+			candidateShape: "top-level",
+		};
+	}
+
+	return {
+		candidate: undefined,
+		candidateShape: "none",
+	};
 }
 
 function stableValue(value: unknown): string {
@@ -392,10 +505,21 @@ ${documents.length > 0 ? `Uploaded documents:\n${buildDocumentSummaries(document
 		},
 	);
 
+	const { candidate, candidateShape } = collectRawEditProposal(parsed);
 	const proposal = tryNormalizeProposal(
-		parsed.proposal ??
-			(Array.isArray(parsed.proposals) ? parsed.proposals[0] : undefined),
+		candidate,
 		"edit",
+		0,
+		{
+			name: currentSchema.name,
+			description: currentSchema.description,
+			jsonSchema: currentSchema.jsonSchema as Record<string, unknown>,
+			classificationHints: currentSchema.classificationHints,
+		},
+		{
+			topLevelKeys: summarizeKeys(parsed),
+			candidateShape,
+		},
 	);
 	if (!proposal) {
 		throw new SchemaAssistantOutputError(
