@@ -157,7 +157,7 @@ There are zero hard-coded document types anywhere in the codebase. The system is
   - `GET /api/schemas/:id` — Get schema details
   - `PUT /api/schemas/:id` — Update schema (fields, hints, etc.)
   - `DELETE /api/schemas/:id` — Soft-delete (archives, preserving history)
-- **AI-assisted schema creation** (`src/services/schema-recommender.ts`): Users can upload sample documents to `POST /api/recommendations`, and the LLM analyzes them to suggest appropriate schemas — complete with JSON Schema definitions, classification hints, and reasoning. These can be accepted directly via the frontend.
+- **AI-assisted schema drafting and editing** (`src/services/schema-assistant.ts`): Users can call `POST /api/schemas/assist` in either `create` or `edit` mode. The assistant accepts prompt-only guidance, uploaded files, or stored document IDs, and returns either reusable create proposals or a proposed edit draft plus field-by-field diff.
 
 This means a user can define a new document type (e.g., "Medical Lab Report") by creating a schema with the relevant fields, and all subsequently uploaded documents will be classified and extracted against it — no code changes required.
 
@@ -171,6 +171,21 @@ As a result:
 - New documents classify against the current active schema set and extract against the latest saved revision available at processing time.
 - Existing processed documents keep their current `extractedData`, `schemaVersion`, and `schemaRevisionId` until someone explicitly reprocesses them.
 - Historical documents therefore preserve the extraction semantics they were originally processed with, even after the live schema evolves.
+
+### AI Edit-Assist Fallback Semantics
+
+**Decision: accept partial edit responses, merge against the current schema, and treat zero-diff reviews as success.**
+
+Real provider responses are not always shaped as a perfect full draft. The edit-assist service therefore accepts:
+- `proposal`
+- the first item in `proposals`
+- a bare top-level proposal object
+
+It also normalizes common alias fields such as `title`, `json_schema`, `schema`, `classification_hints`, `matching_documents`, and `rationale`.
+
+For edit mode specifically, omitted `name`, `description`, `classificationHints`, and `jsonSchema` values are filled from the current live schema before validation. This keeps useful partial responses from surfacing as avoidable user-facing failures.
+
+If the merged proposal is valid but produces no changed diff entries, the API returns a successful no-op review rather than a `502`. Only truly unusable responses after merge and normalization are treated as assistant failures.
 
 ---
 
@@ -238,19 +253,22 @@ After successful extraction, the service builds a structured header chunk plus o
 
 ### API Design
 
-The API surface is organized around three resources — schemas, documents, and search — plus a utility endpoint for AI recommendations.
+The API surface is organized around schemas, documents, search, and admin operations. AI-assisted schema drafting and refinement are part of the schema API rather than a separate recommendation surface.
 
 #### Schema Management (`src/routes/schemas.ts`)
 
 | Endpoint | Purpose |
 |----------|---------|
 | `POST /api/schemas` | Create a new extraction schema (name, description, JSON Schema, classification hints) |
+| `POST /api/schemas/assist` | Generate create-mode schema proposals or edit-mode schema revisions from prompts, files, and/or stored documents |
 | `GET /api/schemas` | List all active schemas |
 | `GET /api/schemas/:id` | Get a specific schema's full details |
 | `PUT /api/schemas/:id` | Update any schema fields |
 | `DELETE /api/schemas/:id` | Soft-delete (archive) a schema |
 
 Schemas are the system's configuration layer. A user defines what document types exist and what fields to extract by creating schemas. Archiving (rather than hard-deleting) preserves history for already-extracted documents.
+
+The assist endpoint deliberately returns normalized, user-reviewable drafts instead of mutating schemas directly. In edit mode, callers receive both the merged proposal and a computed diff so the frontend can show either concrete field changes or a successful “no changes suggested” review state.
 
 #### Document Lifecycle (`src/routes/documents.ts`)
 
@@ -282,11 +300,11 @@ The hybrid path works as follows:
 
 This design keeps semantic retrieval as the primary behavior without making Pinecone a hard dependency. When vectors are unavailable, the response is still structurally identical and the frontend can present a user-friendly “exact text fallback” message instead of a backend-specific error.
 
-#### AI Recommendations (`src/routes/recommendations.ts`)
+#### AI Schema Assist (`src/routes/schemas.ts`)
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/recommendations` | Upload sample files (up to 10), get AI-suggested extraction schemas |
+| `POST /api/schemas/assist` | Analyze prompts, files, and/or stored documents to create new schema drafts or refine an existing schema |
 
 This is a convenience feature that bootstraps schema creation. Users upload representative documents, the LLM analyzes them, and returns suggested schemas with JSON Schema definitions, classification hints, and reasoning. The frontend allows one-click creation of recommended schemas.
 

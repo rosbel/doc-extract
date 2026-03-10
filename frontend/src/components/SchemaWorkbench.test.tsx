@@ -426,6 +426,16 @@ describe("SchemaWorkbench", () => {
 		});
 		fireEvent.click(screen.getByRole("button", { name: "Suggest Edits" }));
 
+		await waitFor(() => {
+			expect(assistMock).toHaveBeenCalledWith({
+				mode: "edit",
+				prompt: "Add line items",
+				schemaId: "schema-1",
+				files: [],
+				documentIds: [],
+			});
+		});
+
 		await screen.findByText("Proposed Revision");
 		fireEvent.click(screen.getAllByRole("button", { name: "Apply Field" })[0]);
 		expect(screen.getByLabelText("Description")).toHaveValue(
@@ -434,6 +444,63 @@ describe("SchemaWorkbench", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "Discard" }));
 		expect(screen.queryByText("Proposed Revision")).not.toBeInTheDocument();
+	});
+
+	it("submits prompt-only edit assist requests and shows a no-change notice", async () => {
+		assistMock.mockResolvedValue({
+			analysis: "The current schema already covers the prompt.",
+			proposal: {
+				name: "Invoice",
+				description: "Captures invoice totals",
+				jsonSchema: baseSchema.jsonSchema,
+				classificationHints: ["invoice"],
+				reasoning: "No additional fields are needed.",
+				matchingDocuments: [],
+			},
+			diff: [
+				{
+					field: "name",
+					label: "Name",
+					changed: false,
+					before: "Invoice",
+					after: "Invoice",
+				},
+				{
+					field: "description",
+					label: "Description",
+					changed: false,
+					before: "Captures invoice totals",
+					after: "Captures invoice totals",
+				},
+			],
+		});
+
+		renderWorkbench(
+			<SchemaWorkbench schema={baseSchema} onSaved={vi.fn()} onCancel={vi.fn()} />,
+		);
+
+		fireEvent.change(screen.getByLabelText("Optional Guidance"), {
+			target: { value: "Review the current invoice schema" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: "Suggest Edits" }));
+
+		await waitFor(() => {
+			expect(assistMock).toHaveBeenCalledWith({
+				mode: "edit",
+				prompt: "Review the current invoice schema",
+				schemaId: "schema-1",
+				files: [],
+				documentIds: [],
+			});
+		});
+
+		expect(await screen.findByText("No Changes Suggested")).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				"AI reviewed the current schema and did not suggest any changes.",
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Apply All" })).not.toBeInTheDocument();
 	});
 
 	it("renders revisions and restores a selected snapshot", async () => {
