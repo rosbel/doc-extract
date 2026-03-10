@@ -1,10 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { Database } from "../db/index.js";
 import { extractionSchemas, schemaRevisions } from "../db/schema.js";
-import type {
-	ExtractionSchema,
-	SchemaRevision,
-} from "../types/index.js";
+import type { ExtractionSchema, SchemaRevision } from "../types/index.js";
 
 type DatabaseLike = Pick<Database, "insert" | "update" | "select" | "query">;
 
@@ -70,7 +67,8 @@ export async function updateSchemaWithRevision(
 	const nextState = {
 		name: input.name ?? current.name,
 		description: input.description ?? current.description,
-		jsonSchema: input.jsonSchema ?? (current.jsonSchema as Record<string, unknown>),
+		jsonSchema:
+			input.jsonSchema ?? (current.jsonSchema as Record<string, unknown>),
 		classificationHints:
 			input.classificationHints ?? current.classificationHints,
 	};

@@ -95,7 +95,9 @@ IMPORTANT: You MUST respond with ONLY valid JSON. No explanatory text before or 
 	}
 
 	const normalizedSchemaId =
-		typeof result.schemaId === "string" ? result.schemaId.trim() : result.schemaId;
+		typeof result.schemaId === "string"
+			? result.schemaId.trim()
+			: result.schemaId;
 	if (
 		normalizedSchemaId &&
 		["none", "null", "no_match", "unclassified"].includes(

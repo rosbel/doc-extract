@@ -3,9 +3,9 @@ import { config } from "../config.js";
 import { logger } from "../lib/logger.js";
 import { getOpenRouterClient } from "../lib/openrouter.js";
 import {
+	type SearchChunk,
 	buildSearchChunks,
 	buildSemanticQueryText,
-	type SearchChunk,
 } from "./search-index.js";
 
 let pinecone: Pinecone | null = null;
@@ -69,7 +69,9 @@ async function getEmbedding(text: string): Promise<number[]> {
 }
 
 async function embedChunks(chunks: SearchChunk[]): Promise<number[][]> {
-	const embeddings = await Promise.all(chunks.map((chunk) => getEmbedding(chunk.text)));
+	const embeddings = await Promise.all(
+		chunks.map((chunk) => getEmbedding(chunk.text)),
+	);
 	return embeddings;
 }
 
@@ -77,7 +79,9 @@ export function isSemanticSearchConfigured(): boolean {
 	return Boolean(config.pinecone.apiKey);
 }
 
-export async function indexDocument(input: IndexedDocumentInput): Promise<void> {
+export async function indexDocument(
+	input: IndexedDocumentInput,
+): Promise<void> {
 	const index = getIndex();
 	if (!index) return;
 
@@ -133,7 +137,9 @@ export async function searchDocument(
 		vector: embedding,
 		topK: limit,
 		includeMetadata: true,
-		...(options?.schemaId ? { filter: { schemaId: { $eq: options.schemaId } } } : {}),
+		...(options?.schemaId
+			? { filter: { schemaId: { $eq: options.schemaId } } }
+			: {}),
 	});
 
 	return (results.matches || []).map((m) => ({

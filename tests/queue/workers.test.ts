@@ -10,90 +10,90 @@ const {
 	activeSchemas,
 	mockDb,
 } = vi.hoisted(() => {
-		const updates: Array<Record<string, unknown>> = [];
-		const schemas = [
-			{
-				id: "schema-1",
-				name: "Invoice",
-				description: "Invoice schema",
-				version: 2,
-				jsonSchema: {
-					type: "object",
-					properties: {
-						total: {
-							type: "number",
-							description: "Total amount",
-						},
+	const updates: Array<Record<string, unknown>> = [];
+	const schemas = [
+		{
+			id: "schema-1",
+			name: "Invoice",
+			description: "Invoice schema",
+			version: 2,
+			jsonSchema: {
+				type: "object",
+				properties: {
+					total: {
+						type: "number",
+						description: "Total amount",
 					},
 				},
-				classificationHints: ["invoice"],
-				status: "active",
-				createdAt: new Date(),
-				updatedAt: new Date(),
 			},
-		];
+			classificationHints: ["invoice"],
+			status: "active",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		},
+	];
 
-		return {
-			classifyDocumentMock: vi.fn(),
-			extractDocumentMock: vi.fn(),
-			getLatestSchemaRevisionMock: vi.fn(),
-			enqueueExtractionMock: vi.fn(),
-			indexDocumentMock: vi.fn(),
-			documentUpdates: updates,
-			activeSchemas: schemas,
-			mockDb: {
-				update: vi.fn((table) => ({
-					set: (values: Record<string, unknown>) => ({
-						where: async () => {
-							updates.push({ table, values });
-							return [];
-						},
-					}),
-				})),
-				insert: vi.fn(() => ({
-					values: () => ({
-						returning: async () => [{ id: "job-1" }],
-					}),
-				})),
-				select: vi.fn(() => ({
-					from: () => ({
-						where: async () => schemas,
-					}),
-				})),
-				query: {
-					documents: {
-						findFirst: vi.fn(async () => ({
-							id: "doc-1",
-							filename: "invoice.pdf",
-							rawText: "Invoice total due",
-						})),
+	return {
+		classifyDocumentMock: vi.fn(),
+		extractDocumentMock: vi.fn(),
+		getLatestSchemaRevisionMock: vi.fn(),
+		enqueueExtractionMock: vi.fn(),
+		indexDocumentMock: vi.fn(),
+		documentUpdates: updates,
+		activeSchemas: schemas,
+		mockDb: {
+			update: vi.fn((table) => ({
+				set: (values: Record<string, unknown>) => ({
+					where: async () => {
+						updates.push({ table, values });
+						return [];
 					},
-					schemaRevisions: {
-						findFirst: vi.fn(async () => ({
-							id: "revision-2",
-							schemaId: "schema-1",
-							version: 2,
-							name: "Invoice",
-							description: "Invoice schema",
-							jsonSchema: {
-								type: "object",
-								properties: {
-									total: {
-										type: "number",
-										description: "Total amount",
-									},
+				}),
+			})),
+			insert: vi.fn(() => ({
+				values: () => ({
+					returning: async () => [{ id: "job-1" }],
+				}),
+			})),
+			select: vi.fn(() => ({
+				from: () => ({
+					where: async () => schemas,
+				}),
+			})),
+			query: {
+				documents: {
+					findFirst: vi.fn(async () => ({
+						id: "doc-1",
+						filename: "invoice.pdf",
+						rawText: "Invoice total due",
+					})),
+				},
+				schemaRevisions: {
+					findFirst: vi.fn(async () => ({
+						id: "revision-2",
+						schemaId: "schema-1",
+						version: 2,
+						name: "Invoice",
+						description: "Invoice schema",
+						jsonSchema: {
+							type: "object",
+							properties: {
+								total: {
+									type: "number",
+									description: "Total amount",
 								},
 							},
-							classificationHints: ["invoice"],
-							source: "manual",
-							summary: null,
-							createdAt: new Date(),
-						})),
-					},
+						},
+						classificationHints: ["invoice"],
+						source: "manual",
+						summary: null,
+						createdAt: new Date(),
+					})),
 				},
 			},
-		};
-	});
+		},
+	};
+});
 
 vi.mock("bullmq", () => ({
 	Worker: class MockWorker {
@@ -131,7 +131,10 @@ vi.mock("../../src/queue/index.js", () => ({
 	redisConnectionOpts: {},
 }));
 
-import { handleClassification, handleExtraction } from "../../src/queue/workers.js";
+import {
+	handleClassification,
+	handleExtraction,
+} from "../../src/queue/workers.js";
 
 describe("worker schema snapshots", () => {
 	beforeEach(() => {
@@ -177,7 +180,10 @@ describe("worker schema snapshots", () => {
 
 		await handleClassification("doc-1");
 
-		expect(getLatestSchemaRevisionMock).toHaveBeenCalledWith(mockDb, "schema-1");
+		expect(getLatestSchemaRevisionMock).toHaveBeenCalledWith(
+			mockDb,
+			"schema-1",
+		);
 		expect(enqueueExtractionMock).toHaveBeenCalledWith("doc-1", "revision-2");
 		expect(
 			documentUpdates.some(
@@ -258,14 +264,11 @@ describe("worker schema snapshots", () => {
 
 		await handleClassification("doc-1");
 
-		expect(classifyDocumentMock).toHaveBeenCalledWith(
-			"Invoice total due",
-			[
-				expect.objectContaining({
-					id: "schema-2",
-				}),
-			],
-		);
+		expect(classifyDocumentMock).toHaveBeenCalledWith("Invoice total due", [
+			expect.objectContaining({
+				id: "schema-2",
+			}),
+		]);
 		expect(enqueueExtractionMock).toHaveBeenCalledWith("doc-1", "revision-9");
 	});
 

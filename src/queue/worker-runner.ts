@@ -1,6 +1,6 @@
 import { logger } from "../lib/logger.js";
-import { createWorker } from "./workers.js";
 import { writeWorkerHeartbeat } from "./redis.js";
+import { createWorker } from "./workers.js";
 
 const worker = createWorker();
 let heartbeatTimer: NodeJS.Timeout | null = null;

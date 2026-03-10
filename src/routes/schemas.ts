@@ -6,8 +6,11 @@ import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { documents, extractionSchemas } from "../db/schema.js";
 import { logger } from "../lib/logger.js";
-import { assistSchemaCreation, assistSchemaEdit } from "../services/schema-assistant.js";
 import { parseFileSafe } from "../services/file-parser.js";
+import {
+	assistSchemaCreation,
+	assistSchemaEdit,
+} from "../services/schema-assistant.js";
 import {
 	createSchemaWithRevision,
 	listSchemaRevisions,
@@ -65,7 +68,8 @@ schemasRouter.post(
 		try {
 			const input = schemaAssistRequestInput.parse({
 				mode: req.body.mode,
-				prompt: typeof req.body.prompt === "string" ? req.body.prompt : undefined,
+				prompt:
+					typeof req.body.prompt === "string" ? req.body.prompt : undefined,
 				schemaId:
 					typeof req.body.schemaId === "string" ? req.body.schemaId : undefined,
 				hasFiles: files.length > 0,
@@ -263,21 +267,24 @@ schemasRouter.get("/:id/revisions", async (req, res, next) => {
 	}
 });
 
-schemasRouter.post("/:id/revisions/:revisionId/restore", async (req, res, next) => {
-	try {
-		const restored = await db.transaction((tx) =>
-			restoreSchemaRevision(tx, req.params.id, req.params.revisionId),
-		);
-		if (!restored) {
-			res.status(404).json({ error: "Schema revision not found" });
-			return;
-		}
+schemasRouter.post(
+	"/:id/revisions/:revisionId/restore",
+	async (req, res, next) => {
+		try {
+			const restored = await db.transaction((tx) =>
+				restoreSchemaRevision(tx, req.params.id, req.params.revisionId),
+			);
+			if (!restored) {
+				res.status(404).json({ error: "Schema revision not found" });
+				return;
+			}
 
-		res.json(restored.schema);
-	} catch (error) {
-		next(error);
-	}
-});
+			res.json(restored.schema);
+		} catch (error) {
+			next(error);
+		}
+	},
+);
 
 // Update schema
 schemasRouter.put("/:id", async (req, res, next) => {

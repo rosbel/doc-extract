@@ -50,12 +50,18 @@ describe("documentsRouter uploads", () => {
 	}) {
 		vi.resetModules();
 		process.env.UPLOAD_DIR = "./uploads/test-documents-routes";
-		process.env.MAX_FILE_SIZE = String(options?.maxFileSize ?? 10 * 1024 * 1024);
-		process.env.MAX_FILES_PER_UPLOAD_BATCH = String(options?.maxBatchFiles ?? 10);
+		process.env.MAX_FILE_SIZE = String(
+			options?.maxFileSize ?? 10 * 1024 * 1024,
+		);
+		process.env.MAX_FILES_PER_UPLOAD_BATCH = String(
+			options?.maxBatchFiles ?? 10,
+		);
 
 		const express = (await import("express")).default;
 		const { documentsRouter } = await import("../../src/routes/documents.js");
-		const { errorHandler } = await import("../../src/middleware/error-handler.js");
+		const { errorHandler } = await import(
+			"../../src/middleware/error-handler.js"
+		);
 
 		const app = express();
 		app.use("/api/documents", documentsRouter);

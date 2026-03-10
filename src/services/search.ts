@@ -8,9 +8,9 @@ import {
 	findSnippet,
 } from "./search-index.js";
 import {
+	type SemanticChunkMatch,
 	isSemanticSearchConfigured,
 	searchDocument,
-	type SemanticChunkMatch,
 } from "./vector-store.js";
 
 export type SearchMode = "hybrid" | "keyword";
@@ -73,12 +73,18 @@ function buildSearchMode(mode: SearchParams["mode"]): SearchMode {
 	return mode === "keyword" ? "keyword" : "hybrid";
 }
 
-function collapseSemanticMatches(matches: SemanticChunkMatch[]): Map<string, {
-	score: number;
-	preview: string;
-	chunkCount: number;
-}> {
-	const byDocument = new Map<string, { score: number; preview: string; chunkCount: number }>();
+function collapseSemanticMatches(matches: SemanticChunkMatch[]): Map<
+	string,
+	{
+		score: number;
+		preview: string;
+		chunkCount: number;
+	}
+> {
+	const byDocument = new Map<
+		string,
+		{ score: number; preview: string; chunkCount: number }
+	>();
 
 	for (const match of matches) {
 		const documentId =
@@ -86,9 +92,7 @@ function collapseSemanticMatches(matches: SemanticChunkMatch[]): Map<string, {
 				? match.metadata.documentId
 				: match.id.split(":")[0];
 		const preview =
-			typeof match.metadata?.preview === "string"
-				? match.metadata.preview
-				: "";
+			typeof match.metadata?.preview === "string" ? match.metadata.preview : "";
 		const existing = byDocument.get(documentId);
 
 		if (!existing) {
@@ -204,7 +208,9 @@ function scoreStructuredSignals(
 	matchedFields: string[];
 } {
 	const normalizedQuery = normalizeQuery(query);
-	const filenameMatches = document.filename.toLowerCase().includes(normalizedQuery);
+	const filenameMatches = document.filename
+		.toLowerCase()
+		.includes(normalizedQuery);
 	const matchedFields = extractMatchedFields(document.extractedData, query);
 	const hasExactFieldMatch =
 		matchedFields.length > 0 ||
@@ -268,7 +274,10 @@ export async function searchDocuments({
 
 	let degraded = false;
 	let degradedReason: SearchResponse["degradedReason"];
-	let semanticByDocument = new Map<string, { score: number; preview: string; chunkCount: number }>();
+	let semanticByDocument = new Map<
+		string,
+		{ score: number; preview: string; chunkCount: number }
+	>();
 
 	if (normalizedMode !== "keyword") {
 		if (!isSemanticSearchConfigured()) {
@@ -282,26 +291,33 @@ export async function searchDocuments({
 					{
 						schemaId,
 						schemaName: schema?.name,
-						schemaJsonSchema: (schema?.jsonSchema ?? null) as Record<string, unknown> | null,
+						schemaJsonSchema: (schema?.jsonSchema ?? null) as Record<
+							string,
+							unknown
+						> | null,
 					},
 				);
 				semanticByDocument = collapseSemanticMatches(semanticMatches);
 			} catch (error) {
 				degraded = true;
 				degradedReason = "semantic_unavailable";
-				logger.warn("Semantic search unavailable, falling back to keyword search", {
-					error: error instanceof Error ? error.message : "Unknown",
-				});
+				logger.warn(
+					"Semantic search unavailable, falling back to keyword search",
+					{
+						error: error instanceof Error ? error.message : "Unknown",
+					},
+				);
 			}
 		}
 	}
 
-	const keywordCandidates = await getKeywordCandidates(query, candidateLimit, schemaId);
+	const keywordCandidates = await getKeywordCandidates(
+		query,
+		candidateLimit,
+		schemaId,
+	);
 	const candidateIds = [
-		...new Set([
-			...semanticByDocument.keys(),
-			...keywordCandidates.keys(),
-		]),
+		...new Set([...semanticByDocument.keys(), ...keywordCandidates.keys()]),
 	];
 	const docs = await getDocumentsByIds(candidateIds, schemaId);
 
@@ -316,14 +332,17 @@ export async function searchDocuments({
 
 	const maxKeywordScore = Math.max(
 		0,
-		...Array.from(keywordCandidates.values()).map((candidate) => candidate.keywordScore),
+		...Array.from(keywordCandidates.values()).map(
+			(candidate) => candidate.keywordScore,
+		),
 	);
 
 	const results = docs
 		.map((document) => {
 			const semanticEntry = semanticByDocument.get(document.id);
 			const semanticScore = semanticEntry?.score ?? 0;
-			const keywordScore = keywordCandidates.get(document.id)?.keywordScore ?? 0;
+			const keywordScore =
+				keywordCandidates.get(document.id)?.keywordScore ?? 0;
 			const normalizedKeywordScore =
 				maxKeywordScore > 0 ? keywordScore / maxKeywordScore : 0;
 			const structuredSignals = scoreStructuredSignals(
