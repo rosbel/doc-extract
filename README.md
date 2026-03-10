@@ -59,11 +59,12 @@ pnpm dev:all
 ## Usage
 
 1. **Create a schema** — Define it manually or use AI assist from prompts and sample documents
-2. **Upload one or more documents** — PDF, DOCX, TXT, CSV, JSON, or Markdown
-3. **Watch processing** — Status transitions: pending → classifying → extracting → completed (or `unclassified` / `failed` when processing cannot produce a matching extracted result)
-4. **View results** — Extracted structured data with confidence scores
-5. **Search** — Smart Search blends semantic retrieval with exact-match signals, with exact-text fallback when vectors are unavailable
-6. **Admin console** — Visit `http://localhost:5173/admin`, enter `ADMIN_TOKEN`, and inspect queue/storage/provider health or run guarded maintenance actions
+2. **Refine a schema** — AI edit assist can work from prompt-only guidance, uploaded samples, or stored documents; partial model responses are merged onto the current schema instead of failing outright
+3. **Upload one or more documents** — PDF, DOCX, TXT, CSV, JSON, or Markdown
+4. **Watch processing** — Status transitions: pending → classifying → extracting → completed (or `unclassified` / `failed` when processing cannot produce a matching extracted result)
+5. **View results** — Extracted structured data with confidence scores
+6. **Search** — Smart Search blends semantic retrieval with exact-match signals, with exact-text fallback when vectors are unavailable
+7. **Admin console** — Visit `http://localhost:5173/admin`, enter `ADMIN_TOKEN`, and inspect queue/storage/provider health or run guarded maintenance actions
 
 ## API Reference
 
@@ -111,9 +112,10 @@ pnpm dev:all
 1. **Content hashing (SHA-256)** — Prevents duplicate processing. Upload returns 409 with existing document ID.
 2. **Two-phase pipeline (classify → extract)** — Allows independent retry and re-classification when schemas change. Extraction is pinned to the saved schema revision chosen at processing time, not a mutable live schema row.
 3. **JSON Schema passthrough** — User-defined schemas flow directly to OpenRouter's `response_format`. No Zod conversion needed.
-4. **JSONB for extracted data** — Supports querying on dynamic structures without schema migrations.
-5. **BullMQ** — Production-grade job queue with retries, rate limiting, and stalled job recovery.
-6. **Processing jobs as audit trail** — Full history of every LLM call with timing and error details.
+4. **AI schema edit fallback** — Edit assist accepts partial or alias-shaped model responses, merges omitted fields from the current schema, and treats zero-diff reviews as success instead of surfacing avoidable failures.
+5. **JSONB for extracted data** — Supports querying on dynamic structures without schema migrations.
+6. **BullMQ** — Production-grade job queue with retries, rate limiting, and stalled job recovery.
+7. **Processing jobs as audit trail** — Full history of every LLM call with timing and error details.
 
 Document read endpoints under `/api/documents` are exempt from HTTP rate limiting so list/detail/polling traffic does not interfere with upload workflows. Upload mutations remain rate-limited separately.
 
@@ -152,6 +154,8 @@ pnpm db:push
 ```
 
 Schema changes are versioned forward. Every schema save creates a new revision, and documents processed before that save keep their existing `extractedData`, `schemaVersion`, and `schemaRevisionId` until they are explicitly reprocessed.
+
+AI-assisted schema edits are also revision-oriented. The edit flow accepts full drafts, partial drafts, or top-level proposal objects from the model, normalizes alias fields, and merges missing values from the current schema before computing the diff shown in the UI. When the merged proposal produces no effective changes, the API returns a successful no-op review instead of a server error.
 
 Reprocessing resets a document's schema assignment and extracted output, then runs classification and extraction again against the latest eligible schema revision at that time.
 

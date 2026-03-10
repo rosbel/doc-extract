@@ -86,7 +86,9 @@ describe("vector store", () => {
 	});
 
 	it("indexes a header chunk and raw text chunks for each document", async () => {
-		const { indexDocument } = await import("../../src/services/vector-store.js");
+		const { indexDocument } = await import(
+			"../../src/services/vector-store.js"
+		);
 
 		await indexDocument({
 			documentId: "doc-1",

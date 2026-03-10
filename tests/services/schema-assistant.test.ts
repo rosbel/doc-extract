@@ -15,6 +15,26 @@ import {
 	computeSchemaDiff,
 } from "../../src/services/schema-assistant.js";
 
+const currentSchema = {
+	id: "schema-1",
+	name: "Invoice",
+	description: "Captures invoice totals.",
+	version: 1,
+	jsonSchema: {
+		type: "object",
+		properties: {
+			total: {
+				type: "number",
+				description: "Invoice total",
+			},
+		},
+	},
+	classificationHints: ["invoice"],
+	status: "active",
+	createdAt: "2026-03-09T12:00:00.000Z",
+	updatedAt: "2026-03-09T12:00:00.000Z",
+};
+
 describe("schema assistant", () => {
 	beforeEach(() => {
 		mockCreate.mockReset();
@@ -188,7 +208,8 @@ describe("schema assistant", () => {
 									},
 								}),
 								classificationHints: ["invoice", "amount due"],
-								reasoning: "Sample invoices consistently include tabular charges.",
+								reasoning:
+									"Sample invoices consistently include tabular charges.",
 								matchingDocuments: ["invoice-1.pdf"],
 							},
 						}),
@@ -198,36 +219,177 @@ describe("schema assistant", () => {
 		});
 
 		const result = await assistSchemaEdit(
-			{
-				id: "schema-1",
-				name: "Invoice",
-				description: "Captures invoice totals.",
-				version: 1,
-				jsonSchema: {
-					type: "object",
-					properties: {
-						total: {
-							type: "number",
-							description: "Invoice total",
-						},
-					},
-				},
-				classificationHints: ["invoice"],
-				status: "active",
-				createdAt: "2026-03-09T12:00:00.000Z",
-				updatedAt: "2026-03-09T12:00:00.000Z",
-			},
+			currentSchema,
 			[{ filename: "invoice-1.pdf", text: "Widget A 10.00" }],
 			"Add repeated charge rows",
 		);
 
 		expect(result.proposal.classificationHints).toContain("amount due");
-		expect(result.diff.find((entry) => entry.field === "jsonSchema")?.changed).toBe(
-			true,
+		expect(
+			result.diff.find((entry) => entry.field === "jsonSchema")?.changed,
+		).toBe(true);
+		expect(
+			result.diff.find((entry) => entry.field === "description")?.changed,
+		).toBe(true);
+	});
+
+	it("accepts a bare top-level edit proposal object", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							name: "Invoice",
+							description: "Captures invoice totals and due dates.",
+							jsonSchema: {
+								type: "object",
+								properties: {
+									total: {
+										type: "number",
+										description: "Invoice total",
+									},
+									dueDate: {
+										type: "string",
+										description: "Invoice due date",
+									},
+								},
+							},
+							classificationHints: ["invoice", "due date"],
+							reasoning: "The examples consistently include payment deadlines.",
+							matchingDocuments: ["invoice-2.pdf"],
+						}),
+					},
+				},
+			],
+		});
+
+		const result = await assistSchemaEdit(
+			currentSchema,
+			[{ filename: "invoice-2.pdf", text: "Due date 2026-03-12" }],
+			"Add due dates",
 		);
-		expect(result.diff.find((entry) => entry.field === "description")?.changed).toBe(
-			true,
+
+		expect(result.proposal.description).toContain("due dates");
+		expect(
+			result.diff.find((entry) => entry.field === "jsonSchema")?.changed,
+		).toBe(true);
+	});
+
+	it("merges partial edit proposals with the current schema", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							analysis: "Only the schema body needs to change.",
+							proposal: {
+								jsonSchema: {
+									type: "object",
+									properties: {
+										total: {
+											type: "number",
+											description: "Invoice total",
+										},
+										lineItems: {
+											type: "array",
+											description: "Invoice line items",
+										},
+									},
+								},
+								reasoning: "The sample adds repeated charges.",
+							},
+						}),
+					},
+				},
+			],
+		});
+
+		const result = await assistSchemaEdit(
+			currentSchema,
+			[{ filename: "invoice-1.pdf", text: "Widget A 10.00" }],
+			"Add line items",
 		);
+
+		expect(result.proposal.name).toBe(currentSchema.name);
+		expect(result.proposal.description).toBe(currentSchema.description);
+		expect(result.proposal.classificationHints).toEqual(
+			currentSchema.classificationHints,
+		);
+		expect(
+			result.diff.find((entry) => entry.field === "jsonSchema")?.changed,
+		).toBe(true);
+	});
+
+	it("normalizes alias fields for edit responses", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							analysis: "Alias-based fields were returned.",
+							proposals: [
+								{
+									title: "Invoice",
+									description: "Captures invoice totals and service charges.",
+									json_schema: JSON.stringify({
+										type: "object",
+										properties: {
+											total: {
+												type: "number",
+												description: "Invoice total",
+											},
+											serviceCharges: {
+												type: "array",
+												description: "Additional service fees",
+											},
+										},
+									}),
+									classification_hints: ["invoice", "service charge"],
+									rationale: "The provider used alternate field names.",
+									matching_documents: ["invoice-3.pdf"],
+								},
+							],
+						}),
+					},
+				},
+			],
+		});
+
+		const result = await assistSchemaEdit(
+			currentSchema,
+			[{ filename: "invoice-3.pdf", text: "Service charge 18.00" }],
+			"Track service charges",
+		);
+
+		expect(result.proposal.classificationHints).toContain("service charge");
+		expect(result.proposal.reasoning).toContain("alternate field names");
+		expect(result.proposal.matchingDocuments).toEqual(["invoice-3.pdf"]);
+	});
+
+	it("treats no-op edit responses as successful with an unchanged diff", async () => {
+		mockCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						content: JSON.stringify({
+							analysis: "The current schema already covers the request.",
+							proposal: {
+								reasoning: "No additional fields are needed for these samples.",
+							},
+						}),
+					},
+				},
+			],
+		});
+
+		const result = await assistSchemaEdit(
+			currentSchema,
+			[{ filename: "invoice-4.pdf", text: "Invoice total 42.00" }],
+			"Review the current schema",
+		);
+
+		expect(result.proposal.name).toBe(currentSchema.name);
+		expect(result.diff.every((entry) => entry.changed === false)).toBe(true);
 	});
 
 	it("returns a controlled error when edit output is unusable", async () => {
@@ -253,25 +415,7 @@ describe("schema assistant", () => {
 
 		await expect(
 			assistSchemaEdit(
-				{
-					id: "schema-1",
-					name: "Invoice",
-					description: "Captures invoice totals.",
-					version: 1,
-					jsonSchema: {
-						type: "object",
-						properties: {
-							total: {
-								type: "number",
-								description: "Invoice total",
-							},
-						},
-					},
-					classificationHints: ["invoice"],
-					status: "active",
-					createdAt: "2026-03-09T12:00:00.000Z",
-					updatedAt: "2026-03-09T12:00:00.000Z",
-				},
+				currentSchema,
 				[{ filename: "invoice-1.pdf", text: "Widget A 10.00" }],
 				"Add repeated charge rows",
 			),

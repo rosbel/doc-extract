@@ -2,19 +2,23 @@
 	"name": "schema-driven-document-extraction-service",
 	"version": "1.0.0",
 	"type": "module",
+	"packageManager": "pnpm@10.30.3",
 	"scripts": {
 		"dev": "tsx watch src/server.ts",
 		"worker": "tsx watch src/queue/worker-runner.ts",
 		"build": "tsc",
+		"build:all": "pnpm build && pnpm --filter extraction-frontend build",
 		"start": "node dist/server.js",
 		"db:push": "drizzle-kit push",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx src/db/migrate.ts",
 		"db:studio": "drizzle-kit studio",
 		"test": "vitest run",
+		"test:all": "pnpm test && pnpm --filter extraction-frontend test",
 		"test:watch": "vitest",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
+		"check": "pnpm lint && pnpm build:all && pnpm test:all",
 		"dev:all": "concurrently -n server,worker,frontend -c blue,yellow,green \"pnpm dev\" \"pnpm worker\" \"pnpm --filter extraction-frontend dev\""
 	},
 	"dependencies": {

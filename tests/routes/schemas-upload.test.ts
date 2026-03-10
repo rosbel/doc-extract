@@ -10,6 +10,7 @@ const selectMock = vi.fn();
 const fromMock = vi.fn();
 const whereMock = vi.fn();
 const documentsFindManyMock = vi.fn();
+const extractionSchemaFindFirstMock = vi.fn();
 
 vi.mock("node:fs/promises", async (importActual) => {
 	const actual = await importActual<typeof import("node:fs/promises")>();
@@ -27,7 +28,7 @@ vi.mock("../../src/db/index.js", () => ({
 				findMany: documentsFindManyMock,
 			},
 			extractionSchemas: {
-				findFirst: vi.fn(),
+				findFirst: extractionSchemaFindFirstMock,
 			},
 		},
 	},
@@ -50,7 +51,9 @@ describe("schemasRouter uploads", () => {
 
 		const express = (await import("express")).default;
 		const { schemasRouter } = await import("../../src/routes/schemas.js");
-		const { errorHandler } = await import("../../src/middleware/error-handler.js");
+		const { errorHandler } = await import(
+			"../../src/middleware/error-handler.js"
+		);
 
 		const app = express();
 		app.use("/api/schemas", schemasRouter);
@@ -67,11 +70,31 @@ describe("schemasRouter uploads", () => {
 		fromMock.mockReset();
 		whereMock.mockReset();
 		documentsFindManyMock.mockReset();
+		extractionSchemaFindFirstMock.mockReset();
 
 		selectMock.mockReturnValue({ from: fromMock });
 		fromMock.mockReturnValue({ where: whereMock });
 		whereMock.mockResolvedValue([]);
 		documentsFindManyMock.mockResolvedValue([]);
+		extractionSchemaFindFirstMock.mockResolvedValue({
+			id: "550e8400-e29b-41d4-a716-446655440010",
+			name: "Invoice",
+			description: "Captures invoice totals",
+			version: 1,
+			jsonSchema: {
+				type: "object",
+				properties: {
+					total: {
+						type: "number",
+						description: "Invoice total",
+					},
+				},
+			},
+			classificationHints: ["invoice"],
+			status: "active",
+			createdAt: "2026-03-09T12:00:00.000Z",
+			updatedAt: "2026-03-09T12:00:00.000Z",
+		});
 		unlinkMock.mockResolvedValue(undefined);
 		parseFileSafeMock
 			.mockResolvedValueOnce({ quality: "good", text: "Invoice 1" })
@@ -137,5 +160,118 @@ describe("schemasRouter uploads", () => {
 			[],
 			undefined,
 		);
+	});
+
+	it("accepts prompt-only edit assist requests", async () => {
+		const app = await createApp();
+		assistSchemaEditMock.mockResolvedValue({
+			analysis: "No changes required.",
+			proposal: {
+				name: "Invoice",
+				description: "Captures invoice totals",
+				jsonSchema: {
+					type: "object",
+					properties: {
+						total: {
+							type: "number",
+							description: "Invoice total",
+						},
+					},
+				},
+				classificationHints: ["invoice"],
+				reasoning: "The current schema already covers the prompt.",
+				matchingDocuments: [],
+			},
+			diff: [
+				{
+					field: "name",
+					label: "Name",
+					changed: false,
+					before: "Invoice",
+					after: "Invoice",
+				},
+			],
+		});
+
+		const response = await request(app)
+			.post("/api/schemas/assist")
+			.field("mode", "edit")
+			.field("schemaId", "550e8400-e29b-41d4-a716-446655440010")
+			.field("prompt", "Review the current invoice schema");
+
+		expect(response.status).toBe(200);
+		expect(assistSchemaEditMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: "550e8400-e29b-41d4-a716-446655440010",
+			}),
+			[],
+			"Review the current invoice schema",
+		);
+		expect(response.body.diff).toEqual([
+			expect.objectContaining({
+				field: "name",
+				changed: false,
+			}),
+		]);
+	});
+
+	it("accepts stored document ids for edit-mode assist", async () => {
+		const app = await createApp();
+		documentsFindManyMock.mockResolvedValue([
+			{
+				id: "550e8400-e29b-41d4-a716-446655440000",
+				filename: "invoice.txt",
+				rawText: "Service charge 18.00",
+			},
+		]);
+		assistSchemaEditMock.mockResolvedValue({
+			analysis: "Schema needs a service charge field.",
+			proposal: {
+				name: "Invoice",
+				description: "Captures invoice totals and service charges",
+				jsonSchema: {
+					type: "object",
+					properties: {
+						serviceCharge: {
+							type: "number",
+							description: "Additional service fee",
+						},
+					},
+				},
+				classificationHints: ["invoice", "service charge"],
+				reasoning: "The stored sample contains service fees.",
+				matchingDocuments: ["invoice.txt"],
+			},
+			diff: [
+				{
+					field: "description",
+					label: "Description",
+					changed: true,
+					before: "Captures invoice totals",
+					after: "Captures invoice totals and service charges",
+				},
+			],
+		});
+
+		const response = await request(app)
+			.post("/api/schemas/assist")
+			.field("mode", "edit")
+			.field("schemaId", "550e8400-e29b-41d4-a716-446655440010")
+			.field("documentIds", "550e8400-e29b-41d4-a716-446655440000");
+
+		expect(response.status).toBe(200);
+		expect(assistSchemaEditMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: "550e8400-e29b-41d4-a716-446655440010",
+			}),
+			[{ filename: "invoice.txt", text: "Service charge 18.00" }],
+			undefined,
+		);
+		expect(response.body.diff).toEqual([
+			expect.objectContaining({
+				field: "description",
+				changed: true,
+			}),
+		]);
 	});
 });

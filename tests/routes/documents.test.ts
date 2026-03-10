@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { documentQueryInput, searchInput } from "../../src/validation/schemas.js";
+import {
+	documentQueryInput,
+	searchInput,
+} from "../../src/validation/schemas.js";
 
 describe("Document query validation", () => {
 	it("should accept valid query params", () => {

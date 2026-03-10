@@ -37,7 +37,9 @@ describe("search index helpers", () => {
 
 		expect(corpus).toContain("filename invoice.pdf");
 		expect(corpus).toContain("schema Invoice");
-		expect(corpus).toContain("schema fields vendor lineItems lineItems[].description lineItems[].amount");
+		expect(corpus).toContain(
+			"schema fields vendor lineItems lineItems[].description lineItems[].amount",
+		);
 		expect(corpus).toContain("lineItems[0].description Consulting");
 		expect(corpus).toContain("Invoice total due on receipt");
 	});
@@ -58,7 +60,9 @@ describe("search index helpers", () => {
 			idSuffix: "header",
 			chunkType: "header",
 		});
-		expect(chunks.filter((chunk) => chunk.chunkType === "raw_text")).toHaveLength(3);
+		expect(
+			chunks.filter((chunk) => chunk.chunkType === "raw_text"),
+		).toHaveLength(3);
 		expect(chunks[1]?.text.length).toBeLessThanOrEqual(1200);
 		expect(chunks[2]?.text.length).toBeLessThanOrEqual(1200);
 	});
