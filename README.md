@@ -128,7 +128,7 @@ Document read endpoints under `/api/documents` are exempt from HTTP rate limitin
 
 ## Deliberate Simplifications
 
-- **Authentication and authorization** are intentionally omitted because the prompt explicitly allowed that tradeoff.
+- **Authentication and authorization** are intentionally omitted. In production, this would be an auth middleware layer (JWT, API keys, etc.).
 - **Admin access uses a shared secret** (`ADMIN_TOKEN`) instead of user accounts or roles. This is intended for internal environments only.
 - **Admin brute-force protection is in-memory**: repeated invalid admin token attempts are rate-limited and temporarily locked out per API process. This is acceptable for the MVP, but it is not shared across replicas or restarts; Redis-backed tracking would be the next step for multi-instance deployments.
 - **File storage uses the local filesystem** instead of S3/GCS. The storage path is persisted so this can be swapped behind the same document model later.
@@ -145,7 +145,7 @@ Document read endpoints under `/api/documents` are exempt from HTTP rate limitin
 
 ## Schema Updates
 
-The search upgrade adds a `documents.search_text` column and GIN index. After pulling these changes, run:
+The database schema uses Drizzle ORM with push-based migrations. After pulling new changes, run:
 
 ```bash
 pnpm db:push

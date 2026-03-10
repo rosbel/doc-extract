@@ -13,3 +13,8 @@ frontend/dist
 
 # Tooling
 test-screenshots.mjs
+.DS_Store
+.claude/
+.agents/
+.goose/
+skills-lock.json

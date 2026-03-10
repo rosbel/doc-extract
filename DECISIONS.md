@@ -157,7 +157,7 @@ There are zero hard-coded document types anywhere in the codebase. The system is
   - `GET /api/schemas/:id` — Get schema details
   - `PUT /api/schemas/:id` — Update schema (fields, hints, etc.)
   - `DELETE /api/schemas/:id` — Soft-delete (archives, preserving history)
-- **AI-assisted schema creation** (`src/services/schema-recommender.ts`): Users can upload sample documents to `POST /api/recommendations`, and the LLM analyzes them to suggest appropriate schemas — complete with JSON Schema definitions, classification hints, and reasoning. These can be accepted directly via the frontend.
+- **AI-assisted schema creation** (`src/services/schema-assistant.ts`): Users can send prompts and sample documents to `POST /api/schemas/assist`, and the LLM analyzes them to suggest appropriate schemas — complete with JSON Schema definitions, classification hints, and reasoning. These can be accepted directly via the frontend.
 
 This means a user can define a new document type (e.g., "Medical Lab Report") by creating a schema with the relevant fields, and all subsequently uploaded documents will be classified and extracted against it — no code changes required.
 
@@ -282,11 +282,11 @@ The hybrid path works as follows:
 
 This design keeps semantic retrieval as the primary behavior without making Pinecone a hard dependency. When vectors are unavailable, the response is still structurally identical and the frontend can present a user-friendly “exact text fallback” message instead of a backend-specific error.
 
-#### AI Recommendations (`src/routes/recommendations.ts`)
+#### AI-Assisted Schema Creation (`src/routes/schemas.ts`)
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/recommendations` | Upload sample files (up to 10), get AI-suggested extraction schemas |
+| `POST /api/schemas/assist` | Generate or refine schema drafts from prompts and sample documents |
 
 This is a convenience feature that bootstraps schema creation. Users upload representative documents, the LLM analyzes them, and returns suggested schemas with JSON Schema definitions, classification hints, and reasoning. The frontend allows one-click creation of recommended schemas.
 
@@ -300,7 +300,7 @@ This is a convenience feature that bootstraps schema creation. Users upload repr
 
 ### What's Not Included (and Why)
 
-- **Authentication/authorization**: Not in scope for this challenge. In production, this would be an auth middleware layer (JWT, API keys, etc.).
+- **Authentication/authorization**: Intentionally omitted to keep the MVP focused. In production, this would be an auth middleware layer (JWT, API keys, etc.).
 - **Admin access model**: The internal admin console uses a shared `ADMIN_TOKEN` header rather than full user accounts. This keeps the MVP operationally simple while still protecting destructive endpoints.
 - **Admin brute-force protection**: Repeated invalid admin token attempts are tracked and temporarily locked out in process memory on the API server. This is an explicit MVP tradeoff: it protects a single instance from naive brute-force attempts, but it is not durable across restarts and is not coordinated across multiple replicas. A Redis-backed limiter would be the production evolution.
 - **API versioning**: Single version is sufficient for the current scope.
