@@ -68,11 +68,17 @@ describe("FileUpload", () => {
 			},
 		} as never);
 		const onUploaded = vi.fn();
-		const { container } = render(<FileUpload onUploaded={onUploaded} />);
+		render(<FileUpload onUploaded={onUploaded} />);
 
 		const firstFile = createFile("one.txt", "one");
 		const secondFile = createFile("two.txt", "two");
-		fireEvent.drop(container.firstElementChild as HTMLElement, {
+		const dropZone = screen
+			.getByText(/drag & drop files here, or click to select/i)
+			.closest("div");
+		if (!dropZone) {
+			throw new Error("Drop zone not found");
+		}
+		fireEvent.drop(dropZone, {
 			dataTransfer: {
 				files: [firstFile, secondFile],
 			},
